@@ -483,12 +483,70 @@ int arm_mrs(CPU *cpu, Bus *bus, u32 instr) {
   return 0;
 }
 
+static void arm_do_msr(CPU *cpu, u32 val, bool r, u8 field_mask) {
+  u32 mask = 0;
+  if (TEST_BIT(field_mask, 0))
+    mask |= 0x000000FF; // c
+  if (TEST_BIT(field_mask, 1))
+    mask |= 0x0000FF00; // x
+  if (TEST_BIT(field_mask, 2))
+    mask |= 0x00FF0000; // s
+  if (TEST_BIT(field_mask, 3))
+    mask |= 0xFF000000; // f
+
+  if (r) {
+    // SPSR
+    Mode mode = CPSR & 0x1F;
+    if (mode != MODE_USR && mode != MODE_SYS) {
+      SPSR = (SPSR & ~mask) | (val & mask);
+    }
+  } else {
+    // CPSR
+    Mode mode = CPSR & 0x1F;
+    if (mode == MODE_USR) {
+      mask &= 0xFF000000;
+    }
+
+    u32 new_cpsr = (CPSR & ~mask) | (val & mask);
+    new_cpsr |= 0x10;
+    cpu_set_mode(cpu, new_cpsr & 0x1F);
+    CPSR = new_cpsr;
+  }
+}
+
 int arm_msr_reg(CPU *cpu, Bus *bus, u32 instr) {
   printf("[ARM] MSR (reg): %08X\n", instr);
+  (void)bus;
+  bool r = TEST_BIT(instr, 22);
+  u8 field_mask = GET_BITS(instr, 16, 4);
+  u8 rm = GET_BITS(instr, 0, 4);
+  u32 rm_val = REG(rm);
+  if (rm == 15) {
+    rm_val -= 4;
+  }
+
+  arm_do_msr(cpu, rm_val, r, field_mask);
+
+  return 0;
 }
 
 int arm_msr_imm(CPU *cpu, Bus *bus, u32 instr) {
   printf("[ARM] MSR (imm): %08X\n", instr);
+  (void)bus;
+  bool r = TEST_BIT(instr, 22);
+  u8 field_mask = GET_BITS(instr, 16, 4);
+  u8 rotate = GET_BITS(instr, 8, 4);
+  u8 imm = GET_BITS(instr, 0, 8);
+
+  u32 val = imm;
+  u32 rot_amt = rotate * 2;
+  if (rot_amt) {
+    val = (val >> rot_amt) | (val << (32 - rot_amt));
+  }
+
+  arm_do_msr(cpu, val, r, field_mask);
+
+  return 0;
 }
 
 int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
@@ -513,8 +571,8 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
   return 0;
 }
 
-static inline void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1,
-                                u32 op2, u8 rd, bool s, bool carry) {
+static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1, u32 op2,
+                         u8 rd, bool s, bool carry) {
   u32 res = 0;
   bool overflow = get_flag(cpu, CPSR_V);
   bool arithmetic = false;
