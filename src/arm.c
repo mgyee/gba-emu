@@ -34,6 +34,9 @@ int arm_step(CPU *cpu, Bus *bus) {
   }
   u32 index = decode_index(instr);
   printf("[ARM] Executing Instr: %08X\n", instr);
+  if (instr == 0x0355001E) {
+    printf("Breakpoint hit\n");
+  }
   return arm_lut[index](cpu, bus, instr);
 }
 
@@ -513,7 +516,7 @@ static inline void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1,
                                 u32 op2, u8 rd, bool s, bool carry) {
   u32 res;
 
-  bool r15_write = (rd == 15);
+  bool r15_dst = (rd == 15);
 
   switch (opcode) {
   case ALU_AND:
@@ -583,25 +586,21 @@ static inline void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1,
     if (s) {
       set_flags_nzc(cpu, res, carry);
     }
-    r15_write = false;
     break;
   case ALU_TEQ:
     res = op1 ^ op2;
     if (s) {
       set_flags_nzc(cpu, res, carry);
     }
-    r15_write = false;
     break;
   case ALU_CMP:
     res = op1 - op2;
     printf("CMP: op1=%08X, op2=%08X, res=%08X\n", op1, op2, res);
     set_flags(cpu, res, (op1 >= op2), ((op1 ^ op2) & (op1 ^ res)) >> 31);
-    r15_write = false;
     break;
   case ALU_CMN:
     res = op1 + op2;
     set_flags(cpu, res, (res < op1), (~(op1 ^ op2) & (op2 ^ res)) >> 31);
-    r15_write = false;
     break;
   case ALU_ORR:
     res = op1 | op2;
@@ -633,10 +632,15 @@ static inline void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1,
     break;
   }
 
-  if (r15_write) {
-    arm_fetch(cpu, bus);
+  if (r15_dst) {
     if (s) {
-      CPSR = SPSR;
+      u32 spsr = SPSR;
+      cpu_set_mode(cpu, SPSR & 0x1F);
+      CPSR = spsr;
+    }
+    if (opcode != ALU_TST && opcode != ALU_TEQ && opcode != ALU_CMP &&
+        opcode != ALU_CMN) {
+      arm_fetch(cpu, bus);
     }
   }
 }
@@ -663,7 +667,7 @@ int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
     rn_val -= 4;
   }
 
-  ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, imm, shift_amt, true);
+  ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, imm, shift_amt, false);
   printf("opcode: %d, rn: %d, rd: %d, imm: %02X, shift_amt: %d\n", op, rn, rd,
          imm, shift_amt);
 
