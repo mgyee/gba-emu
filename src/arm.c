@@ -49,7 +49,7 @@ typedef struct {
 ShiftRes LSL(CPU *cpu, u32 val, u32 amt) {
   ShiftRes res;
   if (amt == 0) {
-    res.value = 0;
+    res.value = val;
     res.carry = get_flag(cpu, CPSR_C);
   } else if (amt < 32) {
     res.value = val << amt;
@@ -71,6 +71,7 @@ ShiftRes LSR(CPU *cpu, u32 val, u32 amt, bool imm) {
     } else {
       res.value = val;
       res.carry = get_flag(cpu, CPSR_C);
+      return res;
     }
   }
 
@@ -514,143 +515,178 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
 
 static inline void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1,
                                 u32 op2, u8 rd, bool s, bool carry) {
-  u32 res;
+  u32 res = 0;
+  bool overflow = get_flag(cpu, CPSR_V);
+  bool arithmetic = false;
 
   bool r15_dst = (rd == 15);
 
   switch (opcode) {
   case ALU_AND:
     res = op1 & op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
   case ALU_EOR:
     res = op1 ^ op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
-  case ALU_SUB:
-    res = op1 - op2;
-    if (s) {
-      set_flags(cpu, res, (op1 >= op2), ((op1 ^ op2) & (op1 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  case ALU_SUB: {
+    u64 tmp = (u64)op1 - op2;
+    res = (u32)tmp;
+    carry = !(tmp >> 32);
+    overflow = ((op1 ^ op2) & (op1 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_RSB:
-    res = op2 - op1;
-    if (s) {
-      set_flags(cpu, res, (op2 >= op1), ((op2 ^ op1) & (op2 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  }
+  case ALU_RSB: {
+    u64 tmp = (u64)op2 - op1;
+    res = (u32)tmp;
+    carry = !(tmp >> 32);
+    overflow = ((op2 ^ op1) & (op2 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_ADD:
-    res = op1 + op2;
-    if (s) {
-      set_flags(cpu, res, (res < op1), (~(op1 ^ op2) & (op2 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  }
+  case ALU_ADD: {
+    u64 tmp = (u64)op1 + op2;
+    res = (u32)tmp;
+    carry = (tmp >> 32) & 1;
+    overflow = (~(op1 ^ op2) & (op2 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_ADC:
-    carry = get_flag(cpu, CPSR_C);
-    res = op1 + op2 + carry;
-    if (s) {
-      set_flags(cpu, res, (res < op1) || (carry && res == op1),
-                (~(op1 ^ op2) & (op2 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  }
+  case ALU_ADC: {
+    u32 c = get_flag(cpu, CPSR_C);
+    u64 tmp = (u64)op1 + op2 + c;
+    res = (u32)tmp;
+    carry = (tmp >> 32) & 1;
+    overflow = (~(op1 ^ op2) & (op2 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_SBC:
-    carry = get_flag(cpu, CPSR_C);
-    res = op1 - op2 + carry - 1;
-    if (s) {
-      set_flags(cpu, res, (op1 >= (op2 - carry + 1)),
-                ((op1 ^ op2) & (op1 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  }
+  case ALU_SBC: {
+    u32 c = get_flag(cpu, CPSR_C);
+    u64 tmp = (u64)op1 - op2 - (1 - c);
+    res = (u32)tmp;
+    carry = !(tmp >> 32);
+    overflow = ((op1 ^ op2) & (op1 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_RSC:
-    carry = get_flag(cpu, CPSR_C);
-    res = op2 - op1 + carry - 1;
-    if (s) {
-      set_flags(cpu, res, (op2 >= (op1 - carry + 1)),
-                ((op2 ^ op1) & (op2 ^ res)) >> 31);
-    }
-    REG(rd) = res;
+  }
+  case ALU_RSC: {
+    u32 c = get_flag(cpu, CPSR_C);
+    u64 tmp = (u64)op2 - op1 - (1 - c);
+    res = (u32)tmp;
+    carry = !(tmp >> 32);
+    overflow = ((op2 ^ op1) & (op2 ^ res)) >> 31;
+    arithmetic = true;
     break;
+  }
   case ALU_TST:
     res = op1 & op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
     break;
   case ALU_TEQ:
     res = op1 ^ op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
     break;
-  case ALU_CMP:
-    res = op1 - op2;
-    printf("CMP: op1=%08X, op2=%08X, res=%08X\n", op1, op2, res);
-    set_flags(cpu, res, (op1 >= op2), ((op1 ^ op2) & (op1 ^ res)) >> 31);
+  case ALU_CMP: {
+    u64 tmp = (u64)op1 - op2;
+    res = (u32)tmp;
+    carry = !(tmp >> 32);
+    overflow = ((op1 ^ op2) & (op1 ^ res)) >> 31;
+    arithmetic = true;
     break;
-  case ALU_CMN:
-    res = op1 + op2;
-    set_flags(cpu, res, (res < op1), (~(op1 ^ op2) & (op2 ^ res)) >> 31);
+  }
+  case ALU_CMN: {
+    u64 tmp = (u64)op1 + op2;
+    res = (u32)tmp;
+    carry = (tmp >> 32) & 1;
+    overflow = (~(op1 ^ op2) & (op2 ^ res)) >> 31;
+    arithmetic = true;
     break;
+  }
   case ALU_ORR:
     res = op1 | op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
   case ALU_MOV:
     res = op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
   case ALU_BIC:
     res = op1 & ~op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
   case ALU_MVN:
     res = ~op2;
-    if (s) {
-      set_flags_nzc(cpu, res, carry);
-    }
-    REG(rd) = res;
     break;
   }
 
-  if (r15_dst) {
-    if (s) {
+  if (opcode != ALU_TST && opcode != ALU_TEQ && opcode != ALU_CMP &&
+      opcode != ALU_CMN) {
+    REG(rd) = res;
+    if (r15_dst) {
+      arm_fetch(cpu, bus);
+    }
+  }
+
+  if (s) {
+    if (arithmetic) {
+      set_flags(cpu, res, carry, overflow);
+    } else {
+      set_flags_nzc(cpu, res, carry);
+    }
+    if (r15_dst) {
       u32 spsr = SPSR;
       cpu_set_mode(cpu, SPSR & 0x1F);
       CPSR = spsr;
-    }
-    if (opcode != ALU_TST && opcode != ALU_TEQ && opcode != ALU_CMP &&
-        opcode != ALU_CMN) {
-      arm_fetch(cpu, bus);
     }
   }
 }
 
 int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
-  NOT_YET_IMPLEMENTED("Data Processing (imm shift)");
+  printf("[ARM] Data Proc (imm shift): %08X\n", instr);
+  ALUOp op = (ALUOp)GET_BITS(instr, 21, 4);
+  bool s = TEST_BIT(instr, 20);
+  u8 rn = GET_BITS(instr, 16, 4);
+  u8 rd = GET_BITS(instr, 12, 4);
+  u8 shift_amt = GET_BITS(instr, 7, 5);
+  Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
+  u8 rm = GET_BITS(instr, 0, 4);
+
+  u32 rn_val = REG(rn);
+  if (rn == 15) {
+    rn_val -= 4;
+  }
+
+  u32 rm_val = REG(rm);
+  if (rm == 15) {
+    rm_val -= 4;
+  }
+
+  ShiftRes sh_res = barrel_shifter(cpu, shift_type, rm_val, shift_amt, true);
+
+  arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  return 0;
 }
 
 int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
-  NOT_YET_IMPLEMENTED("Data Processing (reg shift)");
+  printf("[ARM] Data Proc (reg shift): %08X\n", instr);
+  ALUOp op = (ALUOp)GET_BITS(instr, 21, 4);
+  bool s = TEST_BIT(instr, 20);
+  u8 rn = GET_BITS(instr, 16, 4);
+  u8 rd = GET_BITS(instr, 12, 4);
+  u8 rs = GET_BITS(instr, 8, 4);
+  Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
+  u8 rm = GET_BITS(instr, 0, 4);
+
+  u32 rn_val = REG(rn);
+
+  u32 rs_val = REG(rs);
+  if (rs == 15) {
+    rs_val -= 4;
+  }
+
+  u32 rm_val = REG(rm);
+
+  ShiftRes sh_res =
+      barrel_shifter(cpu, shift_type, rm_val, rs_val & 0xFF, false);
+
+  arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  return 1;
 }
 
 int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
@@ -668,10 +704,9 @@ int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
   }
 
   ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, imm, shift_amt, false);
-  printf("opcode: %d, rn: %d, rd: %d, imm: %02X, shift_amt: %d\n", op, rn, rd,
-         imm, shift_amt);
 
   arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  return 0;
 }
 
 int arm_ldr_str_imm(CPU *cpu, Bus *bus, u32 instr) {
@@ -712,10 +747,18 @@ int arm_stc_ldc(CPU *cpu, Bus *bus, u32 instr) {
   NOT_YET_IMPLEMENTED("STC/LDC");
 }
 
-int arm_cdp(CPU *cpu, Bus *bus, u32 instr) { NOT_YET_IMPLEMENTED("CDP"); }
+int arm_cdp(CPU *cpu, Bus *bus, u32 instr) {
+  NOT_YET_IMPLEMENTED("CDP");
+  (void)cpu;
+  (void)bus;
+  (void)instr;
+}
 
 int arm_mcr_mrc(CPU *cpu, Bus *bus, u32 instr) {
   NOT_YET_IMPLEMENTED("MCR/MRC");
+  (void)cpu;
+  (void)bus;
+  (void)instr;
 }
 
 int arm_swi(CPU *cpu, Bus *bus, u32 instr) {
