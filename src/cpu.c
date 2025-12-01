@@ -1,9 +1,23 @@
 #include "cpu.h"
 #include <string.h>
 
-void cpu_init(CPU *cpu) {
+void cpu_init(CPU *cpu, Bus *bus) {
   memset(cpu, 0, sizeof(CPU));
   arm_lut_init();
+  thumb_lut_init();
+
+  CPSR = 0;
+  cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
+      0x03007F00;
+  cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
+
+  PC = 0x08000000;
+
+  CPSR |= MODE_SYS | CPSR_I | CPSR_F;
+
+  cpu->spsr = &cpu->cpsr;
+
+  arm_fetch(cpu, bus);
 }
 
 void cpu_set_mode(CPU *cpu, u32 new_mode) {
@@ -42,10 +56,10 @@ void cpu_set_mode(CPU *cpu, u32 new_mode) {
     cpu->regs_und[0] = cpu->regs[13];
     cpu->regs_und[1] = cpu->regs[14];
     break;
-  default:
-    cpu->regs_usr[0] = cpu->regs[13];
-    cpu->regs_usr[1] = cpu->regs[14];
-    break;
+    // default:
+    //   cpu->regs_usr[0] = cpu->regs[13];
+    //   cpu->regs_usr[1] = cpu->regs[14];
+    //   break;
   }
 
   if (old_mode == MODE_FIQ && new_mode != MODE_FIQ) {
@@ -99,6 +113,11 @@ void cpu_set_mode(CPU *cpu, u32 new_mode) {
     cpu->regs[14] = cpu->regs_und[1];
     cpu->spsr = &cpu->spsr_und;
     break;
+    // default:
+    //   cpu->regs[13] = cpu->regs_usr[0];
+    //   cpu->regs[14] = cpu->regs_usr[1];
+    //   cpu->spsr = &cpu->cpsr;
+    //   break;
   }
 
   cpu->cpsr = (cpu->cpsr & ~0x1F) | new_mode;
@@ -120,10 +139,10 @@ int cpu_step(CPU *cpu, Bus *bus) {
 
 bool check_cond(CPU *cpu, u32 instr) {
   u8 cond = GET_BITS(instr, 28, 4);
-  bool N = (cpu->cpsr & CPSR_N);
-  bool Z = (cpu->cpsr & CPSR_Z);
-  bool C = (cpu->cpsr & CPSR_C);
-  bool V = (cpu->cpsr & CPSR_V);
+  bool N = (CPSR & CPSR_N);
+  bool Z = (CPSR & CPSR_Z);
+  bool C = (CPSR & CPSR_C);
+  bool V = (CPSR & CPSR_V);
 
   switch (cond) {
   case 0x0: // EQ
@@ -158,5 +177,114 @@ bool check_cond(CPU *cpu, u32 instr) {
     return true;
   default:
     return false;
+  }
+}
+
+ShiftRes LSL(CPU *cpu, u32 val, u32 amt) {
+  ShiftRes res;
+  if (amt == 0) {
+    res.value = val;
+    res.carry = get_flag(cpu, CPSR_C);
+  } else if (amt < 32) {
+    res.value = val << amt;
+    res.carry = (val >> (32 - amt)) & 1;
+  } else if (amt == 32) {
+    res.value = 0;
+    res.carry = val & 1;
+  } else {
+    res.value = 0;
+    res.carry = false;
+  }
+  return res;
+}
+ShiftRes LSR(CPU *cpu, u32 val, u32 amt, bool imm) {
+  ShiftRes res;
+  if (amt == 0) {
+    if (imm) {
+      amt = 32;
+    } else {
+      res.value = val;
+      res.carry = get_flag(cpu, CPSR_C);
+      return res;
+    }
+  }
+
+  if (amt < 32) {
+    res.value = val >> amt;
+    res.carry = (val >> (amt - 1)) & 1;
+  } else if (amt == 32) {
+    res.value = 0;
+    res.carry = (val >> 31) & 1;
+  } else {
+    res.value = 0;
+    res.carry = false;
+  }
+  return res;
+}
+ShiftRes ASR(CPU *cpu, u32 val, u32 amt, bool imm) {
+  ShiftRes res;
+  if (amt == 0) {
+    if (imm) {
+      amt = 32;
+    } else {
+      res.value = val;
+      res.carry = get_flag(cpu, CPSR_C);
+      return res;
+    }
+  }
+
+  if (amt < 32) {
+    i32 sval = (i32)val;
+    res.value = (u32)(sval >> amt);
+    res.carry = (val >> (amt - 1)) & 1;
+  } else {
+    i32 sval = (i32)val;
+    if (sval < 0) {
+      res.value = 0xFFFFFFFF;
+      res.carry = 1;
+    } else {
+      res.value = 0;
+      res.carry = 0;
+    }
+  }
+  return res;
+}
+ShiftRes ROR(CPU *cpu, u32 val, u32 amt, bool imm) {
+  ShiftRes res;
+  if (amt == 0) {
+    if (imm) {
+      // RRX
+      bool c = get_flag(cpu, CPSR_C);
+      res.value = (val >> 1) | ((u32)c << 31);
+      res.carry = val & 1;
+      return res;
+    } else {
+      res.value = val;
+      res.carry = get_flag(cpu, CPSR_C);
+      return res;
+    }
+  }
+
+  amt &= 31;
+  if (amt == 0) {
+    res.value = val;
+    res.carry = (val >> 31) & 1;
+  } else {
+    res.value = (val >> amt) | (val << (32 - amt));
+    res.carry = (val >> (amt - 1)) & 1;
+  }
+  return res;
+}
+
+ShiftRes barrel_shifter(CPU *cpu, Shift shift, u32 val, u32 amt, bool imm) {
+  switch (shift) {
+  case SHIFT_LSL:
+    return LSL(cpu, val, amt);
+  case SHIFT_LSR:
+    return LSR(cpu, val, amt, imm);
+  case SHIFT_ASR:
+    return ASR(cpu, val, amt, imm);
+  case SHIFT_ROR:
+    return ROR(cpu, val, amt, imm);
   }
 }

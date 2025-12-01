@@ -1,6 +1,8 @@
 #include "common.h"
 #include "cpu.h"
 #include <SDL.h>
+#include <stdio.h>
+#include <string.h>
 
 #define SCALE 4
 #define SCREEN_WIDTH 240 * SCALE
@@ -31,9 +33,7 @@ int main(int argc, char *argv[]) {
   }
 
   Bus *bus = malloc(sizeof(Bus));
-  CPU *cpu = malloc(sizeof(CPU));
   bus_init(bus);
-  cpu_init(cpu);
 
   if (argc > 1) {
     if (bus_load_rom(bus, argv[1])) {
@@ -47,8 +47,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  CPU *cpu = malloc(sizeof(CPU));
+  cpu_init(cpu, bus);
+
   bool running = true;
-  int frame_start_time = SDL_GetTicks();
+  Uint32 frame_start_time = SDL_GetTicks();
+
+  int frame_count = 0;
+  Uint32 last_time = SDL_GetTicks();
+  char fps_buffer[32];
 
   while (running) {
     SDL_Event event;
@@ -71,11 +78,20 @@ int main(int argc, char *argv[]) {
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
-    int frame_time = SDL_GetTicks() - frame_start_time;
+    Uint32 frame_time = SDL_GetTicks() - frame_start_time;
     if (frame_time < FRAME_TIME_MS) {
       SDL_Delay(FRAME_TIME_MS - frame_time);
     }
     frame_start_time = SDL_GetTicks();
+
+    frame_count++;
+    if (frame_start_time - last_time >= 1000) {
+      snprintf(fps_buffer, sizeof(fps_buffer), "gba-emu | FPS: %d",
+               frame_count);
+      SDL_SetWindowTitle(window, fps_buffer);
+      frame_count = 0;
+      last_time = frame_start_time;
+    }
   }
 
   free(bus);

@@ -5,9 +5,9 @@ typedef int (*ArmInstr)(CPU *cpu, Bus *bus, u32 instr);
 
 static ArmInstr arm_lut[4096];
 
-static inline u32 decode_index(u32 instr) {
-  u32 high = (instr >> 16) & 0xFF0;
-  u32 low = (instr >> 4) & 0x00F;
+static inline int arm_decode(u32 instr) {
+  int high = (instr >> 16) & 0xFF0;
+  int low = (instr >> 4) & 0x00F;
   return high | low;
 }
 
@@ -32,127 +32,9 @@ int arm_step(CPU *cpu, Bus *bus) {
     printf("[ARM] Condition not met, skipping instruction: %08X\n", instr);
     return 0;
   }
-  u32 index = decode_index(instr);
+  int index = arm_decode(instr);
   printf("[ARM] Executing Instr: %08X\n", instr);
-  if (instr == 0x0355001E) {
-    printf("Breakpoint hit\n");
-  }
   return arm_lut[index](cpu, bus, instr);
-}
-
-typedef enum { SHIFT_LSL, SHIFT_LSR, SHIFT_ASR, SHIFT_ROR } Shift;
-typedef struct {
-  u32 value;
-  bool carry;
-} ShiftRes;
-
-ShiftRes LSL(CPU *cpu, u32 val, u32 amt) {
-  ShiftRes res;
-  if (amt == 0) {
-    res.value = val;
-    res.carry = get_flag(cpu, CPSR_C);
-  } else if (amt < 32) {
-    res.value = val << amt;
-    res.carry = (val >> (32 - amt)) & 1;
-  } else if (amt == 32) {
-    res.value = 0;
-    res.carry = val & 1;
-  } else {
-    res.value = 0;
-    res.carry = false;
-  }
-  return res;
-}
-ShiftRes LSR(CPU *cpu, u32 val, u32 amt, bool imm) {
-  ShiftRes res;
-  if (amt == 0) {
-    if (imm) {
-      amt = 32;
-    } else {
-      res.value = val;
-      res.carry = get_flag(cpu, CPSR_C);
-      return res;
-    }
-  }
-
-  if (amt < 32) {
-    res.value = val >> amt;
-    res.carry = (val >> (amt - 1)) & 1;
-  } else if (amt == 32) {
-    res.value = 0;
-    res.carry = (val >> 31) & 1;
-  } else {
-    res.value = 0;
-    res.carry = false;
-  }
-  return res;
-}
-ShiftRes ASR(CPU *cpu, u32 val, u32 amt, bool imm) {
-  ShiftRes res;
-  if (amt == 0) {
-    if (imm) {
-      amt = 32;
-    } else {
-      res.value = val;
-      res.carry = get_flag(cpu, CPSR_C);
-      return res;
-    }
-  }
-
-  if (amt < 32) {
-    i32 sval = (i32)val;
-    res.value = (u32)(sval >> amt);
-    res.carry = (val >> (amt - 1)) & 1;
-  } else {
-    i32 sval = (i32)val;
-    if (sval < 0) {
-      res.value = 0xFFFFFFFF;
-      res.carry = 1;
-    } else {
-      res.value = 0;
-      res.carry = 0;
-    }
-  }
-  return res;
-}
-ShiftRes ROR(CPU *cpu, u32 val, u32 amt, bool imm) {
-  ShiftRes res;
-  if (amt == 0) {
-    if (imm) {
-      // RRX
-      bool c = get_flag(cpu, CPSR_C);
-      res.value = (val >> 1) | ((u32)c << 31);
-      res.carry = val & 1;
-      return res;
-    } else {
-      res.value = val;
-      res.carry = get_flag(cpu, CPSR_C);
-      return res;
-    }
-  }
-
-  amt &= 31;
-  if (amt == 0) {
-    res.value = val;
-    res.carry = (val >> 31) & 1;
-  } else {
-    res.value = (val >> amt) | (val << (32 - amt));
-    res.carry = (val >> (amt - 1)) & 1;
-  }
-  return res;
-}
-
-ShiftRes barrel_shifter(CPU *cpu, Shift shift, u32 val, u32 amt, bool imm) {
-  switch (shift) {
-  case SHIFT_LSL:
-    return LSL(cpu, val, amt);
-  case SHIFT_LSR:
-    return LSR(cpu, val, amt, imm);
-  case SHIFT_ASR:
-    return ASR(cpu, val, amt, imm);
-  case SHIFT_ROR:
-    return ROR(cpu, val, amt, imm);
-  }
 }
 
 typedef enum {
@@ -172,7 +54,7 @@ typedef enum {
   ALU_MOV,
   ALU_BIC,
   ALU_MVN
-} ALUOp;
+} ALUOpcode;
 
 static int arm_undefined(CPU *cpu, Bus *bus, u32 instr) {
   (void)cpu;
@@ -571,7 +453,7 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
   return 0;
 }
 
-static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1, u32 op2,
+static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOpcode opcode, u32 op1, u32 op2,
                          u8 rd, bool s, bool carry) {
   u32 res = 0;
   bool overflow = get_flag(cpu, CPSR_V);
@@ -697,7 +579,7 @@ static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOp opcode, u32 op1, u32 op2,
 
 int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
   printf("[ARM] Data Proc (imm shift): %08X\n", instr);
-  ALUOp op = (ALUOp)GET_BITS(instr, 21, 4);
+  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
@@ -723,7 +605,7 @@ int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
 
 int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
   printf("[ARM] Data Proc (reg shift): %08X\n", instr);
-  ALUOp op = (ALUOp)GET_BITS(instr, 21, 4);
+  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
@@ -749,7 +631,7 @@ int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
 
 int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
   printf("[ARM] Data Proc (imm val): %08X\n", instr);
-  ALUOp op = (ALUOp)GET_BITS(instr, 21, 4);
+  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
