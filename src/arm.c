@@ -5,6 +5,14 @@ typedef int (*ArmInstr)(CPU *cpu, Bus *bus, u32 instr);
 
 static ArmInstr arm_lut[4096];
 
+#ifdef DEBUG
+static const char *alu_op_names[] = {"and", "eor", "sub", "rsb", "add", "adc",
+                                     "sbc", "rsc", "tst", "teq", "cmp", "cmn",
+                                     "orr", "mov", "bic", "mvn"};
+
+static const char *shift_names[] = {"lsl", "lsr", "asr", "ror"};
+#endif
+
 static inline int arm_decode(u32 instr) {
   int high = (instr >> 16) & 0xFF0;
   int low = (instr >> 4) & 0x00F;
@@ -29,11 +37,12 @@ int arm_step(CPU *cpu, Bus *bus) {
   u32 instr = arm_fetch_next(cpu, bus);
 
   if (!check_cond(cpu, instr)) {
-    printf("[ARM] Condition not met, skipping instruction: %08X\n", instr);
+#ifdef DEBUG
+    printf("%08X: Cond not met\n", instr);
+#endif
     return 0;
   }
   int index = arm_decode(instr);
-  printf("[ARM] Executing Instr: %08X\n", instr);
   return arm_lut[index](cpu, bus, instr);
 }
 
@@ -54,24 +63,35 @@ typedef enum {
   ALU_MOV,
   ALU_BIC,
   ALU_MVN
-} ALUOpcode;
+} ArmALUOpcode;
 
 static int arm_undefined(CPU *cpu, Bus *bus, u32 instr) {
+#ifdef DEBUG
+  printf("%08X: undefined\n", instr);
+#endif
   (void)cpu;
   (void)bus;
-  printf("[ARM] Undefined instruction: %08X\n", instr);
+  (void)instr;
   return 0;
 }
 
 // MUL, MLA
 int arm_mul(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] MUL/MLA: %08X\n", instr);
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
   u8 rd = GET_BITS(instr, 16, 4);
   u8 rn = GET_BITS(instr, 12, 4);
   u8 rs = GET_BITS(instr, 8, 4);
   u8 rm = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  if (acc) {
+    printf("%08X: mla%s r%d, r%d, r%d, r%d\n", instr, s ? "s" : "", rd, rm, rs,
+           rn);
+  } else {
+    printf("%08X: mul%s r%d, r%d, r%d\n", instr, s ? "s" : "", rd, rm, rs);
+  }
+#endif
 
   u8 m_cycles = 1;
   u32 tmp = rs ^ ((i32)rs >> 31);
@@ -91,19 +111,13 @@ int arm_mul(CPU *cpu, Bus *bus, u32 instr) {
   }
 
   if (s) {
-    u32 flags = 0;
-    if (res == 0) {
-      flags |= CPSR_Z;
-    }
-    flags |= (res & CPSR_N);
-    CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
+    set_flags_nz(cpu, res);
   }
 
   return m_cycles;
 }
 // MULL, MLAL
 int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] MULL/MLAL: %08X\n", instr);
   bool sign = TEST_BIT(instr, 22);
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
@@ -111,6 +125,11 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
   u8 rdlo = GET_BITS(instr, 12, 4);
   u8 rs = GET_BITS(instr, 8, 4);
   u8 rm = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  printf("%08X: %s%s%s r%d, r%d, r%d, r%d\n", instr, sign ? "s" : "u",
+         acc ? "mlal" : "mull", s ? "s" : "", rdlo, rdhi, rm, rs);
+#endif
 
   u8 m_cycles = 2;
   u32 tmp = rs ^ ((i32)rs >> 31);
@@ -168,11 +187,14 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_swp(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] SWP: %08X\n", instr);
   bool b = TEST_BIT(instr, 22);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
   u8 rm = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  printf("%08X: swp%s r%d, r%d, [r%d]\n", instr, b ? "b" : "", rd, rm, rn);
+#endif
 
   u32 val;
 
@@ -201,8 +223,6 @@ int arm_swp(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] LDRH/STRH: %08X\n", instr);
-
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -231,6 +251,31 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
       offset -= 4;
     }
   }
+
+#ifdef DEBUG
+  const char *op = l ? "ldrh" : "strh";
+  char addr_str[64];
+  char off_sign = u ? '+' : '-';
+
+  if (p) {
+    // Pre-indexed
+    if (i) {
+      sprintf(addr_str, "[r%d, #%c%d]%s", rn, off_sign, offset, w ? "!" : "");
+    } else {
+      u8 rm = GET_BITS(instr, 0, 4);
+      sprintf(addr_str, "[r%d, %cr%d]%s", rn, off_sign, rm, w ? "!" : "");
+    }
+  } else {
+    // Post-indexed
+    if (i) {
+      sprintf(addr_str, "[r%d], #%c%d", rn, off_sign, offset);
+    } else {
+      u8 rm = GET_BITS(instr, 0, 4);
+      sprintf(addr_str, "[r%d], %cr%d", rn, off_sign, rm);
+    }
+  }
+  printf("%08X: %s r%d, %s\n", instr, op, rd, addr_str);
+#endif
 
   if (!u) {
     offset = -offset;
@@ -270,8 +315,6 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] LDRSB/LDRSH: %08X\n", instr);
-
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -300,6 +343,31 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
       offset -= 4;
     }
   }
+
+#ifdef DEBUG
+  const char *op = h ? "ldrsh" : "ldrsb";
+  char addr_str[64];
+  char off_sign = u ? '+' : '-';
+
+  if (p) {
+    // Pre-indexed
+    if (i) {
+      sprintf(addr_str, "[r%d, #%c%d]%s", rn, off_sign, offset, w ? "!" : "");
+    } else {
+      u8 rm = GET_BITS(instr, 0, 4);
+      sprintf(addr_str, "[r%d, %cr%d]%s", rn, off_sign, rm, w ? "!" : "");
+    }
+  } else {
+    // Post-indexed
+    if (i) {
+      sprintf(addr_str, "[r%d], #%c%d", rn, off_sign, offset);
+    } else {
+      u8 rm = GET_BITS(instr, 0, 4);
+      sprintf(addr_str, "[r%d], %cr%d", rn, off_sign, rm);
+    }
+  }
+  printf("%08X: %s r%d, %s\n", instr, op, rd, addr_str);
+#endif
 
   if (!u) {
     offset = -offset;
@@ -345,10 +413,13 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_mrs(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] MRS: %08X\n", instr);
   (void)bus;
   bool r = TEST_BIT(instr, 22);
   u8 rd = GET_BITS(instr, 12, 4);
+
+#ifdef DEBUG
+  printf("%08X: mrs r%d, %s\n", instr, rd, r ? "spsr" : "cpsr");
+#endif
 
   if (r) {
     // SPSR
@@ -397,7 +468,6 @@ static void arm_do_msr(CPU *cpu, u32 val, bool r, u8 field_mask) {
 }
 
 int arm_msr_reg(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] MSR (reg): %08X\n", instr);
   (void)bus;
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
@@ -407,13 +477,28 @@ int arm_msr_reg(CPU *cpu, Bus *bus, u32 instr) {
     rm_val -= 4;
   }
 
+#ifdef DEBUG
+  char flags[5];
+  int fi = 0;
+  if (field_mask & 1)
+    flags[fi++] = 'c';
+  if (field_mask & 2)
+    flags[fi++] = 'x';
+  if (field_mask & 4)
+    flags[fi++] = 's';
+  if (field_mask & 8)
+    flags[fi++] = 'f';
+  flags[fi] = '\0';
+
+  printf("%08X: msr %s_%s, r%d\n", instr, r ? "spsr" : "cpsr", flags, rm);
+#endif
+
   arm_do_msr(cpu, rm_val, r, field_mask);
 
   return 0;
 }
 
 int arm_msr_imm(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] MSR (imm): %08X\n", instr);
   (void)bus;
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
@@ -426,14 +511,34 @@ int arm_msr_imm(CPU *cpu, Bus *bus, u32 instr) {
     val = (val >> rot_amt) | (val << (32 - rot_amt));
   }
 
+#ifdef DEBUG
+  char flags[5];
+  int fi = 0;
+  if (field_mask & 1)
+    flags[fi++] = 'c';
+  if (field_mask & 2)
+    flags[fi++] = 'x';
+  if (field_mask & 4)
+    flags[fi++] = 's';
+  if (field_mask & 8)
+    flags[fi++] = 'f';
+  flags[fi] = '\0';
+
+  printf("%08X: msr %s_%s, #%d\n", instr, r ? "spsr" : "cpsr", flags, val);
+#endif
+
   arm_do_msr(cpu, val, r, field_mask);
 
   return 0;
 }
 
 int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] BX: %08X\n", instr);
   u8 rn = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  printf("%08X: bx r%d\n", instr, rn);
+#endif
+
   u32 target = REG(rn);
   if (rn == 15) {
     target -= 4;
@@ -453,8 +558,8 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
   return 0;
 }
 
-static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOpcode opcode, u32 op1, u32 op2,
-                         u8 rd, bool s, bool carry) {
+static void arm_do_dproc(CPU *cpu, Bus *bus, ArmALUOpcode opcode, u32 op1,
+                         u32 op2, u8 rd, bool s, bool carry) {
   u32 res = 0;
   bool overflow = get_flag(cpu, CPSR_V);
   bool arithmetic = false;
@@ -578,14 +683,32 @@ static void arm_do_dproc(CPU *cpu, Bus *bus, ALUOpcode opcode, u32 op1, u32 op2,
 }
 
 int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] Data Proc (imm shift): %08X\n", instr);
-  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
+  ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
   u8 shift_amt = GET_BITS(instr, 7, 5);
   Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
   u8 rm = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  char op2_str[64];
+  if (shift_amt == 0 && shift_type == SHIFT_LSL) {
+    sprintf(op2_str, "r%d", rm);
+  } else {
+    sprintf(op2_str, "r%d, %s #%d", rm, shift_names[shift_type], shift_amt);
+  }
+
+  if (op == ALU_MOV || op == ALU_MVN) {
+    printf("%08X: %s%s r%d, %s\n", instr, alu_op_names[op], s ? "s" : "", rd,
+           op2_str);
+  } else if (op == ALU_CMP || op == ALU_CMN || op == ALU_TST || op == ALU_TEQ) {
+    printf("%08X: %s r%d, %s\n", instr, alu_op_names[op], rn, op2_str);
+  } else {
+    printf("%08X: %s%s r%d, r%d, %s\n", instr, alu_op_names[op], s ? "s" : "",
+           rd, rn, op2_str);
+  }
+#endif
 
   u32 rn_val = REG(rn);
   if (rn == 15) {
@@ -604,14 +727,28 @@ int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] Data Proc (reg shift): %08X\n", instr);
-  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
+  ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
   u8 rs = GET_BITS(instr, 8, 4);
   Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
   u8 rm = GET_BITS(instr, 0, 4);
+
+#ifdef DEBUG
+  char op2_str[64];
+  sprintf(op2_str, "r%d, %s r%d", rm, shift_names[shift_type], rs);
+
+  if (op == ALU_MOV || op == ALU_MVN) {
+    printf("%08X: %s%s r%d, %s\n", instr, alu_op_names[op], s ? "s" : "", rd,
+           op2_str);
+  } else if (op == ALU_CMP || op == ALU_CMN || op == ALU_TST || op == ALU_TEQ) {
+    printf("%08X: %s r%d, %s\n", instr, alu_op_names[op], rn, op2_str);
+  } else {
+    printf("%08X: %s%s r%d, r%d, %s\n", instr, alu_op_names[op], s ? "s" : "",
+           rd, rn, op2_str);
+  }
+#endif
 
   u32 rn_val = REG(rn);
 
@@ -630,8 +767,7 @@ int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] Data Proc (imm val): %08X\n", instr);
-  ALUOpcode op = (ALUOpcode)GET_BITS(instr, 21, 4);
+  ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
@@ -644,6 +780,18 @@ int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
   }
 
   ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, imm, shift_amt, false);
+
+#ifdef DEBUG
+  if (op == ALU_MOV || op == ALU_MVN) {
+    printf("%08X: %s%s r%d, #%d\n", instr, alu_op_names[op], s ? "s" : "", rd,
+           sh_res.value);
+  } else if (op == ALU_CMP || op == ALU_CMN || op == ALU_TST || op == ALU_TEQ) {
+    printf("%08X: %s r%d, #%d\n", instr, alu_op_names[op], rn, sh_res.value);
+  } else {
+    printf("%08X: %s%s r%d, r%d, #%d\n", instr, alu_op_names[op], s ? "s" : "",
+           rd, rn, sh_res.value);
+  }
+#endif
 
   arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
   return 0;
@@ -709,9 +857,26 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
 }
 
 int arm_ldr_str_imm(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] LDR/STR (imm): %08X\n", instr);
   bool u = TEST_BIT(instr, 23);
   u32 offset = GET_BITS(instr, 0, 12);
+
+#ifdef DEBUG
+  bool p = TEST_BIT(instr, 24);
+  bool b = TEST_BIT(instr, 22);
+  bool w = TEST_BIT(instr, 21);
+  bool l = TEST_BIT(instr, 20);
+  u8 rn = GET_BITS(instr, 16, 4);
+  u8 rd = GET_BITS(instr, 12, 4);
+  const char *op = l ? (b ? "ldrb" : "ldr") : (b ? "strb" : "str");
+  char off_sign = u ? '+' : '-';
+
+  if (p) {
+    printf("%08X: %s r%d, [r%d, #%c%d]%s\n", instr, op, rd, rn, off_sign,
+           offset, w ? "!" : "");
+  } else {
+    printf("%08X: %s r%d, [r%d], #%c%d\n", instr, op, rd, rn, off_sign, offset);
+  }
+#endif
 
   if (!u) {
     offset = -offset;
@@ -721,11 +886,34 @@ int arm_ldr_str_imm(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_ldr_str_reg(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] LDR/STR (reg): %08X\n", instr);
   bool u = TEST_BIT(instr, 23);
   u8 rm = GET_BITS(instr, 0, 4);
   Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
   u8 shift_amt = GET_BITS(instr, 7, 5);
+
+#ifdef DEBUG
+  bool p = TEST_BIT(instr, 24);
+  bool b = TEST_BIT(instr, 22);
+  bool w = TEST_BIT(instr, 21);
+  bool l = TEST_BIT(instr, 20);
+  u8 rn = GET_BITS(instr, 16, 4);
+  u8 rd = GET_BITS(instr, 12, 4);
+  const char *op = l ? (b ? "ldrb" : "ldr") : (b ? "strb" : "str");
+  char off_sign = u ? '+' : '-';
+  char shift_str[32] = "";
+
+  if (shift_amt > 0 || shift_type != SHIFT_LSL) {
+    sprintf(shift_str, ", %s #%d", shift_names[shift_type], shift_amt);
+  }
+
+  if (p) {
+    printf("%08X: %s r%d, [r%d, %cr%d%s]%s\n", instr, op, rd, rn, off_sign, rm,
+           shift_str, w ? "!" : "");
+  } else {
+    printf("%08X: %s r%d, [r%d], %cr%d%s\n", instr, op, rd, rn, off_sign, rm,
+           shift_str);
+  }
+#endif
 
   u32 rm_val = REG(rm);
   if (rm == 15) {
@@ -743,7 +931,6 @@ int arm_ldr_str_reg(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] LDM/STM: %08X\n", instr);
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool s = TEST_BIT(instr, 22);
@@ -751,6 +938,21 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
   bool l = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
   u16 list = GET_BITS(instr, 0, 16);
+
+#ifdef DEBUG
+  printf("%08X: %s%s r%d%s, {", instr, l ? "ldm" : "stm",
+         p ? (u ? "ib" : "db") : (u ? "ia" : "da"), rn, w ? "!" : "");
+  bool first_print = true;
+  for (int i = 0; i < 16; i++) {
+    if ((list >> i) & 1) {
+      if (!first_print)
+        printf(", ");
+      printf("r%d", i);
+      first_print = false;
+    }
+  }
+  printf("}%s\n", s ? "^" : "");
+#endif
 
   u32 rn_val = REG(rn);
   if (rn == 15) {
@@ -849,8 +1051,6 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_branch(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] B/BL: %08X\n", instr);
-
   bool link = TEST_BIT(instr, 24);
   i32 offset = GET_BITS(instr, 0, 24);
 
@@ -858,6 +1058,10 @@ int arm_branch(CPU *cpu, Bus *bus, u32 instr) {
     offset |= 0xFF000000;
   }
   offset <<= 2;
+
+#ifdef DEBUG
+  printf("%08X: b%s %d\n", instr, link ? "l" : "", offset);
+#endif
 
   if (link) {
     REG(14) = PC - 8;
@@ -892,7 +1096,11 @@ int arm_mcr_mrc(CPU *cpu, Bus *bus, u32 instr) {
 }
 
 int arm_swi(CPU *cpu, Bus *bus, u32 instr) {
-  printf("[ARM] SWI: %08X\n", instr);
+#ifdef DEBUG
+  u32 comment = GET_BITS(instr, 0, 24);
+  printf("%08X: swi #%d\n", instr, comment);
+#endif
+  (void)instr;
   cpu->spsr_svc = CPSR;
   cpu_set_mode(cpu, MODE_SVC);
   REG(14) = PC - 8;
