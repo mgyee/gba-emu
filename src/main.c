@@ -1,5 +1,6 @@
 #include "common.h"
 #include "cpu.h"
+#include "keypad.h"
 #include "ppu.h"
 #include <SDL.h>
 #include <stdio.h>
@@ -39,8 +40,11 @@ int main(int argc, char *argv[]) {
   PPU *ppu = malloc(sizeof(PPU));
   ppu_init(ppu);
 
+  Keypad *keypad = malloc(sizeof(Keypad));
+  keypad_init(keypad);
+
   Bus *bus = malloc(sizeof(Bus));
-  bus_init(bus, ppu);
+  bus_init(bus, ppu, keypad);
 
   if (argc > 1) {
     if (bus_load_rom(bus, argv[1])) {
@@ -71,8 +75,78 @@ int main(int argc, char *argv[]) {
   while (running) {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
-      if (event.type == SDL_QUIT) {
+      switch (event.type) {
+      case SDL_QUIT:
         running = false;
+        break;
+      case SDL_KEYDOWN:
+        switch (event.key.keysym.sym) {
+        case SDLK_w:
+          keypad->keyinput &= ~(1 << BUTTON_UP);
+          break;
+        case SDLK_s:
+          keypad->keyinput &= ~(1 << BUTTON_DOWN);
+          break;
+        case SDLK_a:
+          keypad->keyinput &= ~(1 << BUTTON_LEFT);
+          break;
+        case SDLK_d:
+          keypad->keyinput &= ~(1 << BUTTON_RIGHT);
+          break;
+        case SDLK_j:
+          keypad->keyinput &= ~(1 << BUTTON_A);
+          break;
+        case SDLK_k:
+          keypad->keyinput &= ~(1 << BUTTON_B);
+          break;
+        case SDLK_u:
+          keypad->keyinput &= ~(1 << BUTTON_L);
+          break;
+        case SDLK_i:
+          keypad->keyinput &= ~(1 << BUTTON_R);
+          break;
+        case SDLK_RETURN:
+          keypad->keyinput &= ~(1 << BUTTON_START);
+          break;
+        case SDLK_RSHIFT:
+          keypad->keyinput &= ~(1 << BUTTON_SELECT);
+          break;
+        }
+        break;
+      case SDL_KEYUP:
+        switch (event.key.keysym.sym) {
+        case SDLK_w:
+          keypad->keyinput |= (1 << BUTTON_UP);
+          break;
+        case SDLK_s:
+          keypad->keyinput |= (1 << BUTTON_DOWN);
+          break;
+        case SDLK_a:
+          keypad->keyinput |= (1 << BUTTON_LEFT);
+          break;
+        case SDLK_d:
+          keypad->keyinput |= (1 << BUTTON_RIGHT);
+          break;
+        case SDLK_j:
+          keypad->keyinput |= (1 << BUTTON_A);
+          break;
+        case SDLK_k:
+          keypad->keyinput |= (1 << BUTTON_B);
+          break;
+        case SDLK_u:
+          keypad->keyinput |= (1 << BUTTON_L);
+          break;
+        case SDLK_i:
+          keypad->keyinput |= (1 << BUTTON_R);
+          break;
+        case SDLK_RETURN:
+          keypad->keyinput |= (1 << BUTTON_START);
+          break;
+        case SDLK_RSHIFT:
+          keypad->keyinput |= (1 << BUTTON_SELECT);
+          break;
+        }
+        break;
       }
     }
     int total_cyles = 0;

@@ -804,6 +804,7 @@ static int thumb_swi(CPU *cpu, Bus *bus, u16 instr) {
 #ifdef DEBUG
   printf("%04X: swi\n", instr);
 #endif
+  (void)instr;
   cpu->spsr_svc = CPSR;
   cpu_set_mode(cpu, MODE_SVC);
   CPSR &= ~CPSR_T;
@@ -815,11 +816,12 @@ static int thumb_swi(CPU *cpu, Bus *bus, u16 instr) {
 }
 
 static int thumb_undefined_bcc(CPU *cpu, Bus *bus, u16 instr) {
-  (void)cpu;
-  (void)bus;
 #ifdef DEBUG
   printf("%04X: undefined bcc unimplemented\n", instr);
 #endif
+  (void)cpu;
+  (void)bus;
+  (void)instr;
   NOT_YET_IMPLEMENTED("THUMB UNDEFINED BCC");
 }
 static int thumb_bcc(CPU *cpu, Bus *bus, u16 instr) {

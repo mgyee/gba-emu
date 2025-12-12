@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "keypad.h"
 #include "ppu.h"
 
 typedef enum { ACCESS_NONSEQ = 0, ACCESS_SEQ = 1, ACCESS_CODE = 2 } Access;
@@ -16,12 +17,13 @@ typedef struct {
   // u8 sram[0x10000];      // Up to 64KB Save RAM
 
   PPU *ppu;
+  Keypad *keypad;
 
   Access last_access;
   int cycle_count;
 } Bus;
 
-void bus_init(Bus *bus, PPU *ppu);
+void bus_init(Bus *bus, PPU *ppu, Keypad *keypad);
 u8 bus_read8(Bus *bus, u32 address, Access access);
 void bus_write8(Bus *bus, u32 address, u8 value, Access access);
 u16 bus_read16(Bus *bus, u32 address, Access access);

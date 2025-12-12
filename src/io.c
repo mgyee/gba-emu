@@ -169,6 +169,16 @@ u8 io_read8(Bus *bus, u32 addr) {
     return bus->ppu->LCD.evb & 0xFF;
   case BLDY:
     return bus->ppu->LCD.evy & 0xFF;
+
+  /* Keypad */
+  case KEYINPUT:
+    return bus->keypad->keyinput & 0xFF;
+  case KEYINPUT + 1:
+    return (bus->keypad->keyinput >> 8) & 0xFF;
+  case KEYCNT:
+    return bus->keypad->keycnt & 0xFF;
+  case KEYCNT + 1:
+    return (bus->keypad->keycnt >> 8) & 0xFF;
   default:
     return 0;
   }
@@ -492,6 +502,14 @@ void io_write8(Bus *bus, u32 addr, u8 val) {
     break;
   case BLDY:
     ppu->LCD.evy = val & 0x1F;
+    break;
+
+  /* Keypad */
+  case KEYCNT:
+    bus->keypad->keycnt = (bus->keypad->keycnt & 0xFF00) | val;
+    break;
+  case KEYCNT + 1:
+    bus->keypad->keycnt = (bus->keypad->keycnt & 0x00FF) | (val << 8);
     break;
   default:
     break;

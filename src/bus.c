@@ -24,9 +24,10 @@ static void write_mem32(u8 *data, u32 offset, u32 value) {
   data[offset + 3] = (value >> 24) & 0xFF;
 }
 
-void bus_init(Bus *bus, PPU *ppu) {
+void bus_init(Bus *bus, PPU *ppu, Keypad *keypad) {
   memset(bus, 0, sizeof(Bus));
   bus->ppu = ppu;
+  bus->keypad = keypad;
 }
 
 void bus_set_last_access(Bus *bus, Access access) { bus->last_access = access; }
