@@ -824,7 +824,7 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
       val = bus_read8(bus, addr, ACCESS_NONSEQ);
     } else {
       // LDR
-      val = bus_read32(bus, addr, ACCESS_NONSEQ);
+      val = bus_read32(bus, addr & ~3, ACCESS_NONSEQ);
       u32 rot = (addr & 3) * 8;
       if (rot) {
         val = (val >> rot) | (val << (32 - rot));
