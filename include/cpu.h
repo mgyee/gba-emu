@@ -3,6 +3,8 @@
 
 #define REG(x) (cpu->regs[x])
 #define PC (cpu->r15)
+#define LR (cpu->r14)
+#define SP (cpu->r13)
 #define CPSR (cpu->cpsr)
 #define SPSR (*(cpu->spsr))
 
@@ -13,6 +15,7 @@
 #define CPSR_V (BIT(28)) // Overflow
 
 #define CPSR_I (BIT(7)) // IRQ Disable
+#define CPSR_F (BIT(6)) // FIQ Disable
 
 // Thumb Flag
 #define CPSR_T (BIT(5))
@@ -69,16 +72,20 @@ typedef struct {
   u32 pipeline[2]; // Instruction pipeline
 } CPU;
 
-void cpu_init(CPU *cpu);
+void cpu_init(CPU *cpu, Bus *bus);
 void cpu_set_mode(CPU *cpu, u32 new_mode);
 
 int cpu_step(CPU *cpu, Bus *bus);
+
+void arm_lut_init();
 int arm_step(CPU *cpu, Bus *bus);
 void arm_fetch(CPU *cpu, Bus *bus);
 u32 arm_fetch_next(CPU *cpu, Bus *bus);
+
+void thumb_lut_init();
 int thumb_step(CPU *cpu, Bus *bus);
 void thumb_fetch(CPU *cpu, Bus *bus);
-u32 thumb_fetch_next(CPU *cpu, Bus *bus);
+u16 thumb_fetch_next(CPU *cpu, Bus *bus);
 
 bool check_cond(CPU *cpu, u32 instr);
 
@@ -102,4 +109,22 @@ static inline void set_flags_nzc(CPU *cpu, u32 res, bool carry) {
   CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
 }
 
-void arm_lut_init();
+static inline void set_flags_nz(CPU *cpu, u32 res) {
+  u32 flags = 0;
+  flags |= (res & CPSR_N);
+  flags |= (res == 0) << 30;
+  CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
+}
+
+typedef enum { SHIFT_LSL, SHIFT_LSR, SHIFT_ASR, SHIFT_ROR } Shift;
+typedef struct {
+  u32 value;
+  bool carry;
+} ShiftRes;
+
+ShiftRes LSL(CPU *cpu, u32 val, u32 amt);
+ShiftRes LSR(CPU *cpu, u32 val, u32 amt, bool imm);
+ShiftRes ASR(CPU *cpu, u32 val, u32 amt, bool imm);
+ShiftRes ROR(CPU *cpu, u32 val, u32 amt, bool imm);
+
+ShiftRes barrel_shifter(CPU *cpu, Shift shift, u32 val, u32 amt, bool imm);

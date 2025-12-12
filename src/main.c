@@ -1,15 +1,9 @@
 #include "common.h"
 #include "cpu.h"
+#include "ppu.h"
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
-
-#define SCALE 4
-#define SCREEN_WIDTH 240 * SCALE
-#define SCREEN_HEIGHT 160 * SCALE
-
-#define CYCLES_PER_FRAME 280896
-#define FRAME_TIME_MS (1000.0 / 59.73)
 
 int main(int argc, char *argv[]) {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -32,18 +26,35 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  SDL_Texture *texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                        SDL_TEXTUREACCESS_STREAMING, 240, 160);
+  if (!texture) {
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 1;
+  }
+
+  PPU *ppu = malloc(sizeof(PPU));
+  ppu_init(ppu);
+
   Bus *bus = malloc(sizeof(Bus));
-  bus_init(bus);
+  bus_init(bus, ppu);
 
   if (argc > 1) {
     if (bus_load_rom(bus, argv[1])) {
       printf("ROM loaded: %s\n", argv[1]);
     } else {
       printf("Failed to load ROM: %s\n", argv[1]);
+      free(ppu);
+      free(bus);
       return 1;
     }
   } else {
     printf("Usage: %s <rom_file>\n", argv[0]);
+    free(ppu);
+    free(bus);
     return 1;
   }
 
@@ -68,7 +79,7 @@ int main(int argc, char *argv[]) {
     while (total_cyles < CYCLES_PER_FRAME) {
       int cycles = cpu_step(cpu, bus);
       total_cyles += cycles;
-      // ppu_step(ppu, cycles);
+      ppu_step(ppu, cycles);
       // timer_step(timer, cycles);
       // dma_step(dma, cycles);
       // sound_step(sound, cycles);
@@ -76,6 +87,10 @@ int main(int argc, char *argv[]) {
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
+
+    SDL_UpdateTexture(texture, NULL, ppu->framebuffer, 240 * sizeof(u32));
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
+
     SDL_RenderPresent(renderer);
 
     Uint32 frame_time = SDL_GetTicks() - frame_start_time;
@@ -94,8 +109,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  free(ppu);
+  free(cpu);
   free(bus);
 
+  SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   SDL_Quit();

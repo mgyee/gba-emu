@@ -94,7 +94,7 @@ int arm_mul(CPU *cpu, Bus *bus, u32 instr) {
 #endif
 
   u8 m_cycles = 1;
-  u32 tmp = rs ^ ((i32)rs >> 31);
+  u32 tmp = rs ^ ((s32)rs >> 31);
   m_cycles += (tmp > 0xff);
   m_cycles += (tmp > 0xffff);
   m_cycles += (tmp > 0xffffff);
@@ -132,16 +132,16 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
 #endif
 
   u8 m_cycles = 2;
-  u32 tmp = rs ^ ((i32)rs >> 31);
+  u32 tmp = rs ^ ((s32)rs >> 31);
   m_cycles += (tmp > 0xff);
   m_cycles += (tmp > 0xffff);
   m_cycles += (tmp > 0xffffff);
 
   if (sign) {
     // SMULL, SMLAL
-    i64 res = (i64)(i32)REG(rm) * (i64)(i32)REG(rs);
+    s64 res = (s64)(s32)REG(rm) * (s64)(s32)REG(rs);
     if (acc) {
-      res += ((i64)REG(rdhi) << 32) + (i64)REG(rdlo);
+      res += ((s64)REG(rdhi) << 32) + (s64)REG(rdlo);
     }
 
     REG(rdlo) = res & 0xFFFFFFFF;
@@ -547,7 +547,7 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
 
   if (thumb) {
     CPSR |= CPSR_T;
-    PC = target;
+    PC = target & ~1;
     thumb_fetch(cpu, bus);
   } else {
     CPSR &= ~CPSR_T;
@@ -1039,8 +1039,9 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
   } else {
     if (w && rn == 15) {
       arm_fetch(cpu, bus);
+    } else {
+      bus->last_access = ACCESS_NONSEQ;
     }
-    bus->last_access = ACCESS_NONSEQ;
   }
 
   if (switch_to_user) {
@@ -1052,7 +1053,7 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
 
 int arm_branch(CPU *cpu, Bus *bus, u32 instr) {
   bool link = TEST_BIT(instr, 24);
-  i32 offset = GET_BITS(instr, 0, 24);
+  s32 offset = GET_BITS(instr, 0, 24);
 
   if (offset & 0x800000) {
     offset |= 0xFF000000;

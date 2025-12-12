@@ -126,6 +126,11 @@ void cpu_set_mode(CPU *cpu, u32 new_mode) {
 int cpu_step(CPU *cpu, Bus *bus) {
   int cycles = 0;
   bus->cycle_count = 0;
+
+#ifdef DEBUG
+  getchar();
+  printf("%08X: ", PC);
+#endif
   if (cpu->cpsr & CPSR_T) {
     // printf("[CPU] Thumb Mode Step\n");
     cycles += thumb_step(cpu, bus);
@@ -234,11 +239,11 @@ ShiftRes ASR(CPU *cpu, u32 val, u32 amt, bool imm) {
   }
 
   if (amt < 32) {
-    i32 sval = (i32)val;
+    s32 sval = (s32)val;
     res.value = (u32)(sval >> amt);
     res.carry = (val >> (amt - 1)) & 1;
   } else {
-    i32 sval = (i32)val;
+    s32 sval = (s32)val;
     if (sval < 0) {
       res.value = 0xFFFFFFFF;
       res.carry = 1;

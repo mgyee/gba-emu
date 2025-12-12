@@ -12,7 +12,7 @@ CC := gcc
 SDL_CFLAGS  := $(shell sdl2-config --cflags)
 SDL_LDFLAGS := $(shell sdl2-config --libs)
 
-CFLAGS  := -Wall -Wextra -std=c11 -g -I$(INC_DIR) $(SDL_CFLAGS)
+CFLAGS  := -Wall -Wextra -std=c11 -I$(INC_DIR) $(SDL_CFLAGS)
 LDFLAGS := $(SDL_LDFLAGS)
 
 SRCS := $(wildcard $(SRC_DIR)/*.c)

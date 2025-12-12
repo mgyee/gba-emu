@@ -1,3 +1,4 @@
+#pragma once
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,10 +8,17 @@ typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
+typedef int8_t s8;
+typedef int16_t s16;
+typedef int32_t s32;
+typedef int64_t s64;
+
+#define SCALE 4
+#define SCREEN_WIDTH 240 * SCALE
+#define SCREEN_HEIGHT 160 * SCALE
+
+#define CYCLES_PER_FRAME 280896
+#define FRAME_TIME_MS (1000.0 / 59.73)
 
 #define BIT(n) (1U << (n))
 #define TEST_BIT(val, n) ((val) & BIT(n))
