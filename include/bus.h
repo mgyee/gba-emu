@@ -34,3 +34,5 @@ void bus_write32(Bus *bus, u32 address, u32 value, Access access);
 void bus_set_last_access(Bus *bus, Access access);
 
 bool bus_load_rom(Bus *bus, const char *filename);
+
+bool bus_load_bios(Bus *bus, const char *filename);

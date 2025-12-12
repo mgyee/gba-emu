@@ -441,7 +441,7 @@ static int thumb_ldrh_strh_reg(CPU *cpu, Bus *bus, u16 instr) {
     // LDRH
     u16 val;
     if (addr & 1) {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ);
+      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
@@ -472,7 +472,7 @@ static int thumb_ldrsh_ldrsb_reg(CPU *cpu, Bus *bus, u16 instr) {
   if (h) {
     // LDRSH
     if (addr & 1) {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ) >> 8;
+      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ) >> 8;
       if (val & 0x80) {
         val |= 0xFFFFFF00;
       }
@@ -567,7 +567,7 @@ static int thumb_ldrh_strh_imm(CPU *cpu, Bus *bus, u16 instr) {
   if (l) {
     u16 val;
     if (addr & 1) {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ);
+      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {

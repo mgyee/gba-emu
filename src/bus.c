@@ -37,7 +37,8 @@ u8 bus_read8(Bus *bus, u32 address, Access access) {
   u32 offset;
   switch (address >> 24) {
   case 0x00: // BIOS
-    res = 0;
+    offset = address;
+    res = bus->bios[offset];
     break;
   case 0x02: // WRAM
     offset = address & 0x3FFFF;
@@ -91,7 +92,8 @@ u16 bus_read16(Bus *bus, u32 address, Access access) {
   u32 offset;
   switch (address >> 24) {
   case 0x00: // BIOS
-    res = 0;
+    offset = address;
+    res = read_mem16(bus->bios, offset);
     break;
   case 0x02: // WRAM
     offset = address & 0x3FFFF;
@@ -145,7 +147,8 @@ u32 bus_read32(Bus *bus, u32 address, Access access) {
   u32 offset;
   switch (address >> 24) {
   case 0x00: // BIOS
-    res = 0;
+    offset = address;
+    res = read_mem32(bus->bios, offset);
     break;
   case 0x02: // WRAM
     offset = address & 0x3FFFF;
@@ -326,6 +329,20 @@ bool bus_load_rom(Bus *bus, const char *filename) {
   rewind(file);
 
   size_t read = fread(bus->rom, 1, file_size, file);
+  fclose(file);
+  return read > 0;
+}
+
+bool bus_load_bios(Bus *bus, const char *filename) {
+  FILE *file = fopen(filename, "rb");
+  if (!file) {
+    return false;
+  }
+  fseek(file, 0, SEEK_END);
+  long file_size = ftell(file);
+  rewind(file);
+
+  size_t read = fread(bus->bios, 1, file_size, file);
   fclose(file);
   return read > 0;
 }

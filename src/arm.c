@@ -205,12 +205,12 @@ int arm_swp(CPU *cpu, Bus *bus, u32 instr) {
   } else {
     // word
     u32 addr = REG(rn);
-    val = bus_read32(bus, addr, ACCESS_NONSEQ);
+    val = bus_read32(bus, addr & ~3, ACCESS_NONSEQ);
     u32 rot = (addr & 3) * 8;
     if (rot) {
       val = (val >> rot) | (val << (32 - rot));
     }
-    bus_write32(bus, addr, REG(rm), ACCESS_NONSEQ);
+    bus_write32(bus, addr & ~3, REG(rm), ACCESS_NONSEQ);
   }
 
   REG(rd) = val;
@@ -291,7 +291,7 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
     // LDRH
     u16 val;
     if (addr & 1) {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ);
+      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
@@ -303,7 +303,7 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
     cycles = 1;
   } else {
     // STRH
-    bus_write16(bus, addr, REG(rd), ACCESS_NONSEQ);
+    bus_write16(bus, addr & ~1, REG(rd), ACCESS_NONSEQ);
     bus->last_access = ACCESS_NONSEQ;
   }
 
@@ -382,7 +382,7 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
   if (h) {
     // Halfword
     if (addr & 1) {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ) >> 8;
+      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ) >> 8;
       if (val & 0x80) {
         val |= 0xFFFFFF00;
       }
@@ -844,7 +844,7 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
       bus_write8(bus, addr, val & 0xFF, ACCESS_NONSEQ);
     } else {
       // STR
-      bus_write32(bus, addr, val, ACCESS_NONSEQ);
+      bus_write32(bus, addr & ~3, val, ACCESS_NONSEQ);
     }
     bus->last_access = ACCESS_NONSEQ;
   }
