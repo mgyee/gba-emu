@@ -34,7 +34,7 @@ typedef struct {
     u16 vcount;
     struct {
       u16 val;
-      int bg_priority;
+      int priority;
       int char_base_block;
       int mosaic;
       int colors;

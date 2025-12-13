@@ -221,28 +221,28 @@ void io_write8(Bus *bus, u32 addr, u8 val) {
     break;
   case BG0CNT:
     ppu->LCD.bgcnt[0].val = (ppu->LCD.bgcnt[0].val & 0xFF00) | val;
-    ppu->LCD.bgcnt[0].bg_priority = val & 0x3;
+    ppu->LCD.bgcnt[0].priority = val & 0x3;
     ppu->LCD.bgcnt[0].char_base_block = (val >> 2) & 0x3;
     ppu->LCD.bgcnt[0].mosaic = (val >> 6) & 1;
     ppu->LCD.bgcnt[0].colors = (val >> 7) & 1;
     break;
   case BG1CNT:
     ppu->LCD.bgcnt[1].val = (ppu->LCD.bgcnt[1].val & 0xFF00) | val;
-    ppu->LCD.bgcnt[1].bg_priority = val & 0x3;
+    ppu->LCD.bgcnt[1].priority = val & 0x3;
     ppu->LCD.bgcnt[1].char_base_block = (val >> 2) & 0x3;
     ppu->LCD.bgcnt[1].mosaic = (val >> 6) & 1;
     ppu->LCD.bgcnt[1].colors = (val >> 7) & 1;
     break;
   case BG2CNT:
     ppu->LCD.bgcnt[2].val = (ppu->LCD.bgcnt[2].val & 0xFF00) | val;
-    ppu->LCD.bgcnt[2].bg_priority = val & 0x3;
+    ppu->LCD.bgcnt[2].priority = val & 0x3;
     ppu->LCD.bgcnt[2].char_base_block = (val >> 2) & 0x3;
     ppu->LCD.bgcnt[2].mosaic = (val >> 6) & 1;
     ppu->LCD.bgcnt[2].colors = (val >> 7) & 1;
     break;
   case BG3CNT:
     ppu->LCD.bgcnt[3].val = (ppu->LCD.bgcnt[3].val & 0xFF00) | val;
-    ppu->LCD.bgcnt[3].bg_priority = val & 0x3;
+    ppu->LCD.bgcnt[3].priority = val & 0x3;
     ppu->LCD.bgcnt[3].char_base_block = (val >> 2) & 0x3;
     ppu->LCD.bgcnt[3].mosaic = (val >> 6) & 1;
     ppu->LCD.bgcnt[3].colors = (val >> 7) & 1;

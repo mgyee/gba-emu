@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
   Uint32 frame_start_time = SDL_GetTicks();
 
   int frame_count = 0;
-  Uint32 last_time = SDL_GetTicks();
+  Uint32 last_time = frame_start_time;
   char fps_buffer[32];
 
   while (running) {
@@ -94,10 +94,10 @@ int main(int argc, char *argv[]) {
           keypad->keyinput &= ~(1 << BUTTON_RIGHT);
           break;
         case SDLK_j:
-          keypad->keyinput &= ~(1 << BUTTON_A);
+          keypad->keyinput &= ~(1 << BUTTON_B);
           break;
         case SDLK_k:
-          keypad->keyinput &= ~(1 << BUTTON_B);
+          keypad->keyinput &= ~(1 << BUTTON_A);
           break;
         case SDLK_u:
           keypad->keyinput &= ~(1 << BUTTON_L);
@@ -128,10 +128,10 @@ int main(int argc, char *argv[]) {
           keypad->keyinput |= (1 << BUTTON_RIGHT);
           break;
         case SDLK_j:
-          keypad->keyinput |= (1 << BUTTON_A);
+          keypad->keyinput |= (1 << BUTTON_B);
           break;
         case SDLK_k:
-          keypad->keyinput |= (1 << BUTTON_B);
+          keypad->keyinput |= (1 << BUTTON_A);
           break;
         case SDLK_u:
           keypad->keyinput |= (1 << BUTTON_L);
@@ -171,12 +171,14 @@ int main(int argc, char *argv[]) {
     if (frame_time < FRAME_TIME_MS) {
       SDL_Delay(FRAME_TIME_MS - frame_time);
     }
+
     frame_start_time = SDL_GetTicks();
 
     frame_count++;
-    if (frame_start_time - last_time >= 1000) {
-      snprintf(fps_buffer, sizeof(fps_buffer), "gba-emu | FPS: %d",
-               frame_count);
+    Uint32 elapsed_time = frame_start_time - last_time;
+    if (elapsed_time >= 1000) {
+      double fps = (double)frame_count * 1000.0 / elapsed_time;
+      snprintf(fps_buffer, sizeof(fps_buffer), "gba-emu | FPS: %.1f", fps);
       SDL_SetWindowTitle(window, fps_buffer);
       frame_count = 0;
       last_time = frame_start_time;

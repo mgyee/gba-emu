@@ -13,6 +13,8 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
+typedef unsigned int uint;
+
 #define SCALE 4
 #define SCREEN_WIDTH 240 * SCALE
 #define SCREEN_HEIGHT 160 * SCALE
