@@ -1,12 +1,13 @@
+#pragma once
 #include "bus.h"
 #include "common.h"
 
-#define REG(x) (cpu->regs[x])
-#define PC (cpu->r15)
-#define LR (cpu->r14)
-#define SP (cpu->r13)
-#define CPSR (cpu->cpsr)
-#define SPSR (*(cpu->spsr))
+#define REG(x) (gba->cpu.regs[x])
+#define PC (gba->cpu.r15)
+#define LR (gba->cpu.r14)
+#define SP (gba->cpu.r13)
+#define CPSR (gba->cpu.cpsr)
+#define SPSR (*(gba->cpu.spsr))
 
 // Condition Flags
 #define CPSR_N (BIT(31)) // Negative
@@ -30,7 +31,7 @@ typedef enum {
   MODE_SYS = 0x1F
 } Mode;
 
-typedef struct {
+struct CPU {
   union {
     struct {
       u32 r0;
@@ -69,52 +70,32 @@ typedef struct {
   u32 spsr_abt;
   u32 spsr_und;
 
-  u32 pipeline[2]; // Instruction pipeline
-} CPU;
+  Access next_fetch_access;
 
-void cpu_init(CPU *cpu, Bus *bus);
+  u32 pipeline[2]; // Instruction pipeline
+};
+
+void cpu_init(CPU *cpu);
 void cpu_set_mode(CPU *cpu, u32 new_mode);
 
-int cpu_step(CPU *cpu, Bus *bus);
+int cpu_step(Gba *gba);
 
-void arm_lut_init();
-int arm_step(CPU *cpu, Bus *bus);
-void arm_fetch(CPU *cpu, Bus *bus);
-u32 arm_fetch_next(CPU *cpu, Bus *bus);
+void arm_init_lut();
+int arm_step(Gba *gba);
+void arm_fetch(Gba *gba);
+u32 arm_fetch_next(Gba *gba);
 
-void thumb_lut_init();
-int thumb_step(CPU *cpu, Bus *bus);
-void thumb_fetch(CPU *cpu, Bus *bus);
-u16 thumb_fetch_next(CPU *cpu, Bus *bus);
+void thumb_init_lut();
+int thumb_step(Gba *gba);
+void thumb_fetch(Gba *gba);
+u16 thumb_fetch_next(Gba *gba);
 
 bool check_cond(CPU *cpu, u32 instr);
 
-static inline bool get_flag(CPU *cpu, u32 flag) { return (CPSR & flag) != 0; }
-
-static inline void set_flags(CPU *cpu, u32 res, bool carry, bool overflow) {
-  u32 flags = 0;
-
-  flags |= (res & CPSR_N);
-  flags |= (res == 0) << 30;
-  flags |= carry << 29;
-  flags |= overflow << 28;
-  CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C | CPSR_V)) | flags;
-}
-
-static inline void set_flags_nzc(CPU *cpu, u32 res, bool carry) {
-  u32 flags = 0;
-  flags |= (res & CPSR_N);
-  flags |= (res == 0) << 30;
-  flags |= carry << 29;
-  CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
-}
-
-static inline void set_flags_nz(CPU *cpu, u32 res) {
-  u32 flags = 0;
-  flags |= (res & CPSR_N);
-  flags |= (res == 0) << 30;
-  CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
-}
+bool get_flag(CPU *cpu, u32 flag);
+void set_flags(CPU *cpu, u32 res, bool carry, bool overflow);
+void set_flags_nz(CPU *cpu, u32 res);
+void set_flags_nzc(CPU *cpu, u32 res, bool carry);
 
 typedef enum { SHIFT_LSL, SHIFT_LSR, SHIFT_ASR, SHIFT_ROR } Shift;
 typedef struct {

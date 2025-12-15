@@ -1,348 +1,395 @@
 #include "bus.h"
+#include "gba.h"
 #include "io.h"
 #include <stdio.h>
 #include <string.h>
 
-static u16 read_mem16(const u8 *data, u32 offset) {
-  return data[offset] | (data[offset + 1] << 8);
+static inline u8 read_mem8(const u8 *data, u32 offset) { return data[offset]; }
+
+static inline u16 read_mem16(const u8 *data, u32 offset) {
+  return *(u16 *)(data + offset);
 }
 
-static u32 read_mem32(const u8 *data, u32 offset) {
-  return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) |
-         (data[offset + 3] << 24);
+static inline u32 read_mem32(const u8 *data, u32 offset) {
+  return *(u32 *)(data + offset);
 }
 
-static void write_mem16(u8 *data, u32 offset, u16 value) {
-  data[offset] = value & 0xFF;
-  data[offset + 1] = (value >> 8) & 0xFF;
+static inline void write_mem8(u8 *data, u32 offset, u8 value) {
+  data[offset] = value;
 }
 
-static void write_mem32(u8 *data, u32 offset, u32 value) {
-  data[offset] = value & 0xFF;
-  data[offset + 1] = (value >> 8) & 0xFF;
-  data[offset + 2] = (value >> 16) & 0xFF;
-  data[offset + 3] = (value >> 24) & 0xFF;
+static inline void write_mem16(u8 *data, u32 offset, u16 value) {
+  *(u16 *)(data + offset) = value;
 }
 
-void bus_init(Bus *bus, PPU *ppu, Keypad *keypad) {
+static inline void write_mem32(u8 *data, u32 offset, u32 value) {
+  *(u32 *)(data + offset) = value;
+}
+
+void bus_init_waitstates(Bus *bus) {
+  memset(bus->wait_16, 1, sizeof(bus->wait_16));
+  memset(bus->wait_32, 1, sizeof(bus->wait_32));
+
+  bus->wait_16[ACCESS_SEQ][REGION_BIOS] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_BIOS] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_BIOS] = 1;
+  bus->wait_32[ACCESS_NONSEQ][REGION_BIOS] = 1;
+
+  bus->wait_16[ACCESS_SEQ][REGION_EWRAM] = 3;
+  bus->wait_16[ACCESS_NONSEQ][REGION_EWRAM] = 3;
+  bus->wait_32[ACCESS_SEQ][REGION_EWRAM] = 6;
+  bus->wait_32[ACCESS_NONSEQ][REGION_EWRAM] = 6;
+
+  bus->wait_16[ACCESS_SEQ][REGION_IWRAM] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_IWRAM] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_IWRAM] = 1;
+  bus->wait_32[ACCESS_NONSEQ][REGION_IWRAM] = 1;
+
+  bus->wait_16[ACCESS_SEQ][REGION_IO] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_IO] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_IO] = 1;
+  bus->wait_32[ACCESS_NONSEQ][REGION_IO] = 1;
+
+  bus->wait_16[ACCESS_SEQ][REGION_PALETTE] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_PALETTE] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_PALETTE] = 2;
+  bus->wait_32[ACCESS_NONSEQ][REGION_PALETTE] = 2;
+
+  bus->wait_16[ACCESS_SEQ][REGION_VRAM] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_VRAM] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_VRAM] = 2;
+  bus->wait_32[ACCESS_NONSEQ][REGION_VRAM] = 2;
+
+  bus->wait_16[ACCESS_SEQ][REGION_OAM] = 1;
+  bus->wait_16[ACCESS_NONSEQ][REGION_OAM] = 1;
+  bus->wait_32[ACCESS_SEQ][REGION_OAM] = 1;
+  bus->wait_32[ACCESS_NONSEQ][REGION_OAM] = 1;
+
+  bus_update_waitstates(bus, 0);
+}
+
+void bus_update_waitstates(Bus *bus, u16 waitcnt) {
+  static const int ws0_n[] = {4, 3, 2, 8};
+  static const int ws0_s[] = {2, 1};
+  static const int ws1_n[] = {4, 3, 2, 8};
+  static const int ws1_s[] = {4, 1};
+  static const int ws2_n[] = {4, 3, 2, 8};
+  static const int ws2_s[] = {8, 1};
+  static const int sram[] = {4, 3, 2, 8};
+
+  int ws0_n_idx = GET_BITS(waitcnt, 2, 2);
+  int ws0_s_idx = TEST_BIT(waitcnt, 4);
+  int ws1_n_idx = GET_BITS(waitcnt, 5, 2);
+  int ws1_s_idx = TEST_BIT(waitcnt, 7);
+  int ws2_n_idx = GET_BITS(waitcnt, 8, 2);
+  int ws2_s_idx = TEST_BIT(waitcnt, 10);
+
+  int wait_n[] = {ws0_n[ws0_n_idx], ws1_n[ws1_n_idx], ws2_n[ws2_n_idx]};
+  int wait_s[] = {ws0_s[ws0_s_idx], ws1_s[ws1_s_idx], ws2_s[ws2_s_idx]};
+
+  for (int region = REGION_CART_WS0_A; region <= REGION_CART_WS2_B; region++) {
+    int ws_idx = (region - REGION_CART_WS0_A) / 2;
+    bus->wait_16[ACCESS_NONSEQ][region] = wait_n[ws_idx] + 1;
+    bus->wait_16[ACCESS_SEQ][region] = wait_s[ws_idx] + 1;
+    bus->wait_32[ACCESS_NONSEQ][region] =
+        wait_n[ws_idx] + 1 + wait_s[ws_idx] + 1;
+    bus->wait_32[ACCESS_SEQ][region] = wait_s[ws_idx] + 1 + wait_s[ws_idx] + 1;
+  }
+
+  int sram_idx = GET_BITS(waitcnt, 0, 2);
+
+  for (int region = REGION_SRAM; region <= REGION_UNUSED; region++) {
+    bus->wait_16[ACCESS_NONSEQ][region] = sram[sram_idx] + 1;
+    bus->wait_16[ACCESS_SEQ][region] = sram[sram_idx] + 1;
+    bus->wait_32[ACCESS_NONSEQ][region] = sram[sram_idx] + 1;
+    bus->wait_32[ACCESS_SEQ][region] = sram[sram_idx] + 1;
+  }
+}
+
+void bus_init(Bus *bus) {
   memset(bus, 0, sizeof(Bus));
-  bus->ppu = ppu;
-  bus->keypad = keypad;
+  bus_init_waitstates(bus);
 }
 
-void bus_set_last_access(Bus *bus, Access access) { bus->last_access = access; }
+static int get_region(u32 address) { return address >> 24; }
 
-u8 bus_read8(Bus *bus, u32 address, Access access) {
+u8 bus_read8(Gba *gba, u32 address, Access access) {
   u8 res;
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     offset = address;
-    res = bus->bios[offset];
+    res = read_mem8(gba->bios, offset);
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    res = bus->wram[offset];
+    res = read_mem8(gba->ewram, offset);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    res = bus->iram[offset];
+    res = read_mem8(gba->iwram, offset);
     break;
-  case 0x04: // IO REGISTERS
-    res = io_read8(bus, address);
+  case REGION_IO:
+    res = io_read8(gba, address);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    res = bus->ppu->palram[offset];
+    res = read_mem8(gba->ppu.palram, offset);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    res = bus->ppu->vram[offset];
+    res = read_mem8(gba->ppu.vram, offset);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    res = bus->ppu->oam[offset];
+    res = read_mem8(gba->ppu.oam, offset);
     break;
-  case 0x08: // ROM
-  case 0x09:
-  case 0x0A: // Wait State 1
-  case 0x0B:
-  case 0x0C: // Wait State 2
-  case 0x0D:
+  case REGION_CART_WS0_A:
+  case REGION_CART_WS0_B:
+  case REGION_CART_WS1_A:
+  case REGION_CART_WS1_B:
+  case REGION_CART_WS2_A:
+  case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
-    res = bus->rom[offset];
+    res = read_mem8(gba->rom.data, offset);
     break;
   default:
     res = 0;
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
+  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
   return res;
 }
 
-u16 bus_read16(Bus *bus, u32 address, Access access) {
+u16 bus_read16(Gba *gba, u32 address, Access access) {
   if ((access & ACCESS_CODE) == ACCESS_CODE) {
     address &= ~0x1;
   }
   u16 res;
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     offset = address;
-    res = read_mem16(bus->bios, offset);
+    res = read_mem16(gba->bios, offset);
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    res = read_mem16(bus->wram, offset);
+    res = read_mem16(gba->ewram, offset);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    res = read_mem16(bus->iram, offset);
+    res = read_mem16(gba->iwram, offset);
     break;
-  case 0x04: // IO REGISTERS
-    res = io_read16(bus, address);
+  case REGION_IO:
+    res = io_read16(gba, address);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    res = read_mem16(bus->ppu->palram, offset);
+    res = read_mem16(gba->ppu.palram, offset);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    res = read_mem16(bus->ppu->vram, offset);
+    res = read_mem16(gba->ppu.vram, offset);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    res = read_mem16(bus->ppu->oam, offset);
+    res = read_mem16(gba->ppu.oam, offset);
     break;
-  case 0x08: // ROM
-  case 0x09:
-  case 0x0A: // Wait State 1
-  case 0x0B:
-  case 0x0C: // Wait State 2
-  case 0x0D:
+  case REGION_CART_WS0_A:
+  case REGION_CART_WS0_B:
+  case REGION_CART_WS1_A:
+  case REGION_CART_WS1_B:
+  case REGION_CART_WS2_A:
+  case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
-    res = read_mem16(bus->rom, offset);
+    res = read_mem16(gba->rom.data, offset);
     break;
   default:
     res = 0;
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
+  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
   return res;
 }
 
-u32 bus_read32(Bus *bus, u32 address, Access access) {
+u32 bus_read32(Gba *gba, u32 address, Access access) {
   if ((access & ACCESS_CODE) == ACCESS_CODE) {
     address &= ~0x3;
   }
   u32 res;
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     offset = address;
-    res = read_mem32(bus->bios, offset);
+    res = read_mem32(gba->bios, offset);
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    res = read_mem32(bus->wram, offset);
+    res = read_mem32(gba->ewram, offset);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    res = read_mem32(bus->iram, offset);
+    res = read_mem32(gba->iwram, offset);
     break;
-  case 0x04: // IO REGISTERS
-    res = io_read32(bus, address);
+  case REGION_IO:
+    res = io_read32(gba, address);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    res = read_mem32(bus->ppu->palram, offset);
+    res = read_mem32(gba->ppu.palram, offset);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    res = read_mem32(bus->ppu->vram, offset);
+    res = read_mem32(gba->ppu.vram, offset);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    res = read_mem32(bus->ppu->oam, offset);
+    res = read_mem32(gba->ppu.oam, offset);
     break;
-  case 0x08: // ROM
-  case 0x09:
-  case 0x0A: // Wait State 1
-  case 0x0B:
-  case 0x0C: // Wait State 2
-  case 0x0D:
+  case REGION_CART_WS0_A:
+  case REGION_CART_WS0_B:
+  case REGION_CART_WS1_A:
+  case REGION_CART_WS1_B:
+  case REGION_CART_WS2_A:
+  case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
-    res = read_mem32(bus->rom, offset);
+    res = read_mem32(gba->rom.data, offset);
     break;
   default:
     res = 0;
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
+  gba->bus.cycle_count += gba->bus.wait_32[access & 1][region];
   return res;
 }
 
-void bus_write8(Bus *bus, u32 address, u8 data, Access access) {
+void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    bus->wram[offset] = data;
+    write_mem8(gba->ewram, offset, data);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    bus->iram[offset] = data;
+    write_mem8(gba->iwram, offset, data);
     break;
-  case 0x04: // IO REGISTERS
-    io_write8(bus, address, data);
+  case REGION_IO:
+    io_write8(gba, address, data);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    bus->ppu->palram[offset] = data;
+    write_mem8(gba->ppu.palram, offset, data);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    bus->ppu->vram[offset] = data;
+    write_mem8(gba->ppu.vram, offset, data);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    bus->ppu->oam[offset] = data;
-    break;
-  case 0x08: // ROM
+    write_mem8(gba->ppu.oam, offset, data);
     break;
   default:
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
+  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
 }
-void bus_write16(Bus *bus, u32 address, u16 data, Access access) {
+void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   if ((access & ACCESS_CODE) == ACCESS_CODE) {
     address &= ~0x1;
   }
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    write_mem16(bus->wram, offset, data);
+    write_mem16(gba->ewram, offset, data);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    write_mem16(bus->iram, offset, data);
+    write_mem16(gba->iwram, offset, data);
     break;
-  case 0x04: // IO REGISTERS
-    io_write16(bus, address, data);
+  case REGION_IO:
+    io_write16(gba, address, data);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    write_mem16(bus->ppu->palram, offset, data);
+    write_mem16(gba->ppu.palram, offset, data);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    write_mem16(bus->ppu->vram, offset, data);
+    write_mem16(gba->ppu.vram, offset, data);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    write_mem16(bus->ppu->oam, offset, data);
-    break;
-  case 0x08: // ROM
+    write_mem16(gba->ppu.oam, offset, data);
     break;
   default:
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
+  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
 }
 
-void bus_write32(Bus *bus, u32 address, u32 data, Access access) {
+void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   if ((access & ACCESS_CODE) == ACCESS_CODE) {
     address &= ~0x3;
   }
   u32 offset;
-  switch (address >> 24) {
-  case 0x00: // BIOS
+  int region = get_region(address);
+  switch (region) {
+  case REGION_BIOS:
     break;
-  case 0x02: // WRAM
+  case REGION_EWRAM:
     offset = address & 0x3FFFF;
-    write_mem32(bus->wram, offset, data);
+    write_mem32(gba->ewram, offset, data);
     break;
-  case 0x03: // IRAM
+  case REGION_IWRAM:
     offset = address & 0x7FFF;
-    write_mem32(bus->iram, offset, data);
+    write_mem32(gba->iwram, offset, data);
     break;
-  case 0x04: // IO REGISTERS
-    io_write32(bus, address, data);
+  case REGION_IO:
+    io_write32(gba, address, data);
     break;
-  case 0x05: // PALETTE RAM
+  case REGION_PALETTE:
     offset = address & 0x3FF;
-    write_mem32(bus->ppu->palram, offset, data);
+    write_mem32(gba->ppu.palram, offset, data);
     break;
-  case 0x06: // VRAM
+  case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    write_mem32(bus->ppu->vram, offset, data);
+    write_mem32(gba->ppu.vram, offset, data);
     break;
-  case 0x07: // OAM
+  case REGION_OAM:
     offset = address & 0x3FF;
-    write_mem32(bus->ppu->oam, offset, data);
-    break;
-  case 0x08: // ROM
+    write_mem32(gba->ppu.oam, offset, data);
     break;
   default:
     break;
   }
-  bus->cycle_count++;
-  bus->last_access = ACCESS_SEQ;
-}
-
-bool bus_load_rom(Bus *bus, const char *filename) {
-  FILE *file = fopen(filename, "rb");
-  if (!file) {
-    return false;
-  }
-  fseek(file, 0, SEEK_END);
-  long file_size = ftell(file);
-  rewind(file);
-
-  size_t read = fread(bus->rom, 1, file_size, file);
-  fclose(file);
-  return read > 0;
-}
-
-bool bus_load_bios(Bus *bus, const char *filename) {
-  FILE *file = fopen(filename, "rb");
-  if (!file) {
-    return false;
-  }
-  fseek(file, 0, SEEK_END);
-  long file_size = ftell(file);
-  rewind(file);
-
-  size_t read = fread(bus->bios, 1, file_size, file);
-  fclose(file);
-  return read > 0;
+  gba->bus.cycle_count += gba->bus.wait_32[access & 1][region];
 }

@@ -1,27 +1,27 @@
 #include "cpu.h"
+#include "gba.h"
 #include <string.h>
 
-void cpu_init(CPU *cpu, Bus *bus) {
+void cpu_init(CPU *cpu) {
   memset(cpu, 0, sizeof(CPU));
-  arm_lut_init();
-  thumb_lut_init();
+  arm_init_lut();
+  thumb_init_lut();
 
-  CPSR = 0;
   cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
       0x03007F00;
   cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
 
-  PC = 0x08000000;
+  cpu->regs[15] = 0x08000000;
 
-  CPSR |= MODE_SYS | CPSR_I | CPSR_F;
+  cpu->cpsr |= MODE_SYS | CPSR_I | CPSR_F;
 
   cpu->spsr = &cpu->cpsr;
 
-  arm_fetch(cpu, bus);
+  cpu->next_fetch_access = ACCESS_NONSEQ;
 }
 
 void cpu_set_mode(CPU *cpu, u32 new_mode) {
-  u32 old_mode = CPSR & 0x1F;
+  u32 old_mode = cpu->cpsr & 0x1F;
   if (old_mode == new_mode)
     return;
 
@@ -123,31 +123,36 @@ void cpu_set_mode(CPU *cpu, u32 new_mode) {
   cpu->cpsr = (cpu->cpsr & ~0x1F) | new_mode;
 }
 
-int cpu_step(CPU *cpu, Bus *bus) {
+int cpu_step(Gba *gba) {
   int cycles = 0;
-  bus->cycle_count = 0;
+  gba->bus.cycle_count = 0;
 
 #ifdef DEBUG
   getchar();
   printf("%08X: ", PC);
 #endif
-  if (cpu->cpsr & CPSR_T) {
+  if (CPSR & CPSR_T) {
     // printf("[CPU] Thumb Mode Step\n");
-    cycles += thumb_step(cpu, bus);
+    cycles += thumb_step(gba);
   } else {
     // printf("[CPU] ARM Mode Step\n");
-    cycles += arm_step(cpu, bus);
+    cycles += arm_step(gba);
   }
-  cycles += bus->cycle_count;
+  cycles += gba->bus.cycle_count;
   return cycles;
 }
 
 bool check_cond(CPU *cpu, u32 instr) {
   u8 cond = GET_BITS(instr, 28, 4);
-  bool N = (CPSR & CPSR_N);
-  bool Z = (CPSR & CPSR_Z);
-  bool C = (CPSR & CPSR_C);
-  bool V = (CPSR & CPSR_V);
+  bool N = cpu->cpsr & CPSR_N;
+  bool Z = cpu->cpsr & CPSR_Z;
+  bool C = cpu->cpsr & CPSR_C;
+  bool V = cpu->cpsr & CPSR_V;
+
+  // bool N = (CPSR & CPSR_N);
+  // bool Z = (CPSR & CPSR_Z);
+  // bool C = (CPSR & CPSR_C);
+  // bool V = (CPSR & CPSR_V);
 
   switch (cond) {
   case 0x0: // EQ
@@ -292,4 +297,34 @@ ShiftRes barrel_shifter(CPU *cpu, Shift shift, u32 val, u32 amt, bool imm) {
   case SHIFT_ROR:
     return ROR(cpu, val, amt, imm);
   }
+}
+
+bool get_flag(CPU *cpu, u32 flag) { return (cpu->cpsr & flag) != 0; }
+
+void set_flags(CPU *cpu, u32 res, bool carry, bool overflow) {
+  u32 flags = 0;
+
+  flags |= (res & CPSR_N);
+  flags |= (res == 0) << 30;
+  flags |= carry << 29;
+  flags |= overflow << 28;
+  cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z | CPSR_C | CPSR_V)) | flags;
+  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C | CPSR_V)) | flags;
+}
+
+void set_flags_nzc(CPU *cpu, u32 res, bool carry) {
+  u32 flags = 0;
+  flags |= (res & CPSR_N);
+  flags |= (res == 0) << 30;
+  flags |= carry << 29;
+  cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
+  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
+}
+
+void set_flags_nz(CPU *cpu, u32 res) {
+  u32 flags = 0;
+  flags |= (res & CPSR_N);
+  flags |= (res == 0) << 30;
+  cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z)) | flags;
+  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
 }

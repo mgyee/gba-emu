@@ -1,40 +1,49 @@
 #include "io.h"
+#include "bus.h"
+#include "gba.h"
 #include <stdio.h>
+#include <string.h>
 
-u8 io_read8(Bus *bus, u32 addr) {
+void io_init(Io *io) { memset(io, 0, sizeof(Io)); }
+
+u8 io_read8(Gba *gba, u32 addr) {
+  PPU *ppu = &gba->ppu;
+  Keypad *keypad = &gba->keypad;
+  Io *io = &gba->io;
+
   switch (addr) {
   case DISPCNT:
-    return bus->ppu->LCD.dispcnt.val & 0xFF;
+    return ppu->LCD.dispcnt.val & 0xFF;
   case DISPCNT + 1:
-    return (bus->ppu->LCD.dispcnt.val >> 8) & 0xFF;
+    return (ppu->LCD.dispcnt.val >> 8) & 0xFF;
   case GREENSWAP:
-    return bus->ppu->LCD.greenswap & 0xFF;
+    return ppu->LCD.greenswap & 0xFF;
   case GREENSWAP + 1:
-    return (bus->ppu->LCD.greenswap >> 8) & 0xFF;
+    return (ppu->LCD.greenswap >> 8) & 0xFF;
   case DISPSTAT:
-    return bus->ppu->LCD.dispstat.val & 0xFF;
+    return ppu->LCD.dispstat.val & 0xFF;
   case VCOUNT:
-    return bus->ppu->LCD.vcount & 0xFF;
+    return ppu->LCD.vcount & 0xFF;
   case VCOUNT + 1:
-    return (bus->ppu->LCD.vcount >> 8) & 0xFF;
+    return (ppu->LCD.vcount >> 8) & 0xFF;
   case DISPSTAT + 1:
-    return (bus->ppu->LCD.dispstat.val >> 8) & 0xFF;
+    return (ppu->LCD.dispstat.val >> 8) & 0xFF;
   case BG0CNT:
-    return bus->ppu->LCD.bgcnt[0].val & 0xFF;
+    return ppu->LCD.bgcnt[0].val & 0xFF;
   case BG0CNT + 1:
-    return (bus->ppu->LCD.bgcnt[0].val >> 8) & 0xFF;
+    return (ppu->LCD.bgcnt[0].val >> 8) & 0xFF;
   case BG1CNT:
-    return bus->ppu->LCD.bgcnt[1].val & 0xFF;
+    return ppu->LCD.bgcnt[1].val & 0xFF;
   case BG1CNT + 1:
-    return (bus->ppu->LCD.bgcnt[1].val >> 8) & 0xFF;
+    return (ppu->LCD.bgcnt[1].val >> 8) & 0xFF;
   case BG2CNT:
-    return bus->ppu->LCD.bgcnt[2].val & 0xFF;
+    return ppu->LCD.bgcnt[2].val & 0xFF;
   case BG2CNT + 1:
-    return (bus->ppu->LCD.bgcnt[2].val >> 8) & 0xFF;
+    return (ppu->LCD.bgcnt[2].val >> 8) & 0xFF;
   case BG3CNT:
-    return bus->ppu->LCD.bgcnt[3].val & 0xFF;
+    return ppu->LCD.bgcnt[3].val & 0xFF;
   case BG3CNT + 1:
-    return (bus->ppu->LCD.bgcnt[3].val >> 8) & 0xFF;
+    return (ppu->LCD.bgcnt[3].val >> 8) & 0xFF;
   // case BG0HOFS:
   //   return bus->ppu->LCD.bghofs[0] & 0xFF;
   // case BG0HOFS + 1:
@@ -150,43 +159,48 @@ u8 io_read8(Bus *bus, u32 addr) {
   // case WININ:
   //   return bus->ppu->LCD.winin.val & 0xFF;
   case WININ + 1:
-    return (bus->ppu->LCD.winin.val >> 8) & 0xFF;
+    return (ppu->LCD.winin.val >> 8) & 0xFF;
   case WINOUT:
-    return bus->ppu->LCD.winout.val & 0xFF;
+    return ppu->LCD.winout.val & 0xFF;
   case WINOUT + 1:
-    return (bus->ppu->LCD.winout.val >> 8) & 0xFF;
+    return (ppu->LCD.winout.val >> 8) & 0xFF;
   case MOSAIC:
-    return bus->ppu->LCD.mosaic.val & 0xFF;
+    return ppu->LCD.mosaic.val & 0xFF;
   case MOSAIC + 1:
-    return (bus->ppu->LCD.mosaic.val >> 8) & 0xFF;
+    return (ppu->LCD.mosaic.val >> 8) & 0xFF;
   case BLDCNT:
-    return bus->ppu->LCD.blendcnt.val & 0xFF;
+    return ppu->LCD.blendcnt.val & 0xFF;
   case BLDCNT + 1:
-    return (bus->ppu->LCD.blendcnt.val >> 8) & 0xFF;
+    return (ppu->LCD.blendcnt.val >> 8) & 0xFF;
   case BLDALPHA:
-    return bus->ppu->LCD.eva & 0xFF;
+    return ppu->LCD.eva & 0xFF;
   case BLDALPHA + 1:
-    return bus->ppu->LCD.evb & 0xFF;
+    return ppu->LCD.evb & 0xFF;
   case BLDY:
-    return bus->ppu->LCD.evy & 0xFF;
+    return ppu->LCD.evy & 0xFF;
 
   /* Keypad */
   case KEYINPUT:
-    return bus->keypad->keyinput & 0xFF;
+    return keypad->keyinput & 0xFF;
   case KEYINPUT + 1:
-    return (bus->keypad->keyinput >> 8) & 0xFF;
+    return (keypad->keyinput >> 8) & 0xFF;
   case KEYCNT:
-    return bus->keypad->keycnt & 0xFF;
+    return keypad->keycnt & 0xFF;
   case KEYCNT + 1:
-    return (bus->keypad->keycnt >> 8) & 0xFF;
+    return (keypad->keycnt >> 8) & 0xFF;
+  case WAITCNT:
+    return io->waitcnt & 0xFF;
+  case WAITCNT + 1:
+    return (io->waitcnt >> 8) & 0xFF;
   default:
     return 0;
   }
 }
 
-void io_write8(Bus *bus, u32 addr, u8 val) {
-  PPU *ppu = bus->ppu;
-
+void io_write8(Gba *gba, u32 addr, u8 val) {
+  PPU *ppu = &gba->ppu;
+  Keypad *keypad = &gba->keypad;
+  Io *io = &gba->io;
   switch (addr) {
   case DISPCNT:
     ppu->LCD.dispcnt.val = (ppu->LCD.dispcnt.val & 0xFF00) | val;
@@ -252,16 +266,19 @@ void io_write8(Bus *bus, u32 addr, u8 val) {
     ppu->LCD.bgcnt[0].screen_base_block = val & 0x1F;
     ppu->LCD.bgcnt[0].display_area_overflow = (val >> 5) & 1;
     ppu->LCD.bgcnt[0].screen_size = (val >> 6) & 3;
+    break;
   case BG1CNT + 1:
     ppu->LCD.bgcnt[1].val = (ppu->LCD.bgcnt[1].val & 0x00FF) | (val << 8);
     ppu->LCD.bgcnt[1].screen_base_block = val & 0x1F;
     ppu->LCD.bgcnt[1].display_area_overflow = (val >> 5) & 1;
     ppu->LCD.bgcnt[1].screen_size = (val >> 6) & 3;
+    break;
   case BG2CNT + 1:
     ppu->LCD.bgcnt[2].val = (ppu->LCD.bgcnt[2].val & 0x00FF) | (val << 8);
     ppu->LCD.bgcnt[2].screen_base_block = val & 0x1F;
     ppu->LCD.bgcnt[2].display_area_overflow = (val >> 5) & 1;
     ppu->LCD.bgcnt[2].screen_size = (val >> 6) & 3;
+    break;
   case BG3CNT + 1:
     ppu->LCD.bgcnt[3].val = (ppu->LCD.bgcnt[3].val & 0x00FF) | (val << 8);
     ppu->LCD.bgcnt[3].screen_base_block = val & 0x1F;
@@ -273,6 +290,7 @@ void io_write8(Bus *bus, u32 addr, u8 val) {
     break;
   case BG0HOFS + 1:
     ppu->LCD.bghofs[0] = (ppu->LCD.bghofs[0] & 0x00FF) | (val << 8);
+    break;
   case BG0VOFS:
     ppu->LCD.bgvofs[0] = (ppu->LCD.bgvofs[0] & 0xFF00) | val;
     break;
@@ -506,30 +524,38 @@ void io_write8(Bus *bus, u32 addr, u8 val) {
 
   /* Keypad */
   case KEYCNT:
-    bus->keypad->keycnt = (bus->keypad->keycnt & 0xFF00) | val;
+    keypad->keycnt = (keypad->keycnt & 0xFF00) | val;
     break;
   case KEYCNT + 1:
-    bus->keypad->keycnt = (bus->keypad->keycnt & 0x00FF) | (val << 8);
+    keypad->keycnt = (keypad->keycnt & 0x00FF) | (val << 8);
+    break;
+  case WAITCNT:
+    io->waitcnt = (io->waitcnt & 0xFF00) | val;
+    bus_update_waitstates(&gba->bus, io->waitcnt);
+    break;
+  case WAITCNT + 1:
+    io->waitcnt = (io->waitcnt & 0x00FF) | (val << 8);
+    bus_update_waitstates(&gba->bus, io->waitcnt);
     break;
   default:
     break;
   }
 }
 
-u16 io_read16(Bus *bus, u32 addr) {
-  return io_read8(bus, addr) | (io_read8(bus, addr + 1) << 8);
+u16 io_read16(Gba *gba, u32 addr) {
+  return io_read8(gba, addr) | (io_read8(gba, addr + 1) << 8);
 }
 
-void io_write16(Bus *bus, u32 addr, u16 val) {
-  io_write8(bus, addr, val & 0xFF);
-  io_write8(bus, addr + 1, (val >> 8) & 0xFF);
+void io_write16(Gba *gba, u32 addr, u16 val) {
+  io_write8(gba, addr, val & 0xFF);
+  io_write8(gba, addr + 1, (val >> 8) & 0xFF);
 }
 
-u32 io_read32(Bus *bus, u32 addr) {
-  return io_read16(bus, addr) | (io_read16(bus, addr + 2) << 16);
+u32 io_read32(Gba *gba, u32 addr) {
+  return io_read16(gba, addr) | (io_read16(gba, addr + 2) << 16);
 }
 
-void io_write32(Bus *bus, u32 addr, u32 val) {
-  io_write16(bus, addr, val & 0xFFFF);
-  io_write16(bus, addr + 2, (val >> 16) & 0xFFFF);
+void io_write32(Gba *gba, u32 addr, u32 val) {
+  io_write16(gba, addr, val & 0xFFFF);
+  io_write16(gba, addr + 2, (val >> 16) & 0xFFFF);
 }

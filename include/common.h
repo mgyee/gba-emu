@@ -12,8 +12,13 @@ typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
-
 typedef unsigned int uint;
+
+typedef struct Gba Gba;
+typedef struct Bus Bus;
+typedef struct CPU CPU;
+typedef struct PPU PPU;
+typedef struct Keypad Keypad;
 
 #define SCALE 4
 #define SCREEN_WIDTH 240 * SCALE

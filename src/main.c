@@ -1,5 +1,6 @@
 #include "common.h"
 #include "cpu.h"
+#include "gba.h"
 #include "keypad.h"
 #include "ppu.h"
 #include <SDL.h>
@@ -37,123 +38,127 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  PPU *ppu = malloc(sizeof(PPU));
-  ppu_init(ppu);
+  // PPU *ppu = malloc(sizeof(PPU));
+  // ppu_init(ppu);
+  //
+  // Keypad *keypad = malloc(sizeof(Keypad));
+  // keypad_init(keypad);
+  //
+  // Bus *bus = malloc(sizeof(Bus));
+  // bus_init(bus, ppu, keypad);
+  //
+  // bus_load_bios(bus, "bios.bin");
 
-  Keypad *keypad = malloc(sizeof(Keypad));
-  keypad_init(keypad);
-
-  Bus *bus = malloc(sizeof(Bus));
-  bus_init(bus, ppu, keypad);
-
-  if (argc > 1) {
-    if (bus_load_rom(bus, argv[1])) {
-      printf("ROM loaded: %s\n", argv[1]);
-    } else {
-      printf("Failed to load ROM: %s\n", argv[1]);
-      free(ppu);
-      free(bus);
-      return 1;
-    }
-  } else {
-    printf("Usage: %s <rom_file>\n", argv[0]);
-    free(ppu);
-    free(bus);
+  char *bios_file = "gba_bios.bin";
+  if (argc == 3) {
+    bios_file = argv[2];
+  } else if (argc != 2) {
+    printf("Usage: %s <rom_file> [bios_file]\n", argv[0]);
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 1;
   }
 
-  CPU *cpu = malloc(sizeof(CPU));
-  cpu_init(cpu, bus);
+  Gba *gba = malloc(sizeof(Gba));
+  if (!gba_init(gba, bios_file, argv[1])) {
+    gba_free(gba);
+    free(gba);
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 1;
+  }
 
-  bool running = true;
   Uint32 frame_start_time = SDL_GetTicks();
 
   int frame_count = 0;
   Uint32 last_time = frame_start_time;
   char fps_buffer[32];
 
-  while (running) {
+  while (true) {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
       switch (event.type) {
       case SDL_QUIT:
-        running = false;
-        break;
+        goto shutdown;
       case SDL_KEYDOWN:
         switch (event.key.keysym.sym) {
         case SDLK_w:
-          keypad->keyinput &= ~(1 << BUTTON_UP);
+          gba->keypad.keyinput &= ~(1 << BUTTON_UP);
           break;
         case SDLK_s:
-          keypad->keyinput &= ~(1 << BUTTON_DOWN);
+          gba->keypad.keyinput &= ~(1 << BUTTON_DOWN);
           break;
         case SDLK_a:
-          keypad->keyinput &= ~(1 << BUTTON_LEFT);
+          gba->keypad.keyinput &= ~(1 << BUTTON_LEFT);
           break;
         case SDLK_d:
-          keypad->keyinput &= ~(1 << BUTTON_RIGHT);
+          gba->keypad.keyinput &= ~(1 << BUTTON_RIGHT);
           break;
         case SDLK_j:
-          keypad->keyinput &= ~(1 << BUTTON_B);
+          gba->keypad.keyinput &= ~(1 << BUTTON_B);
           break;
         case SDLK_k:
-          keypad->keyinput &= ~(1 << BUTTON_A);
+          gba->keypad.keyinput &= ~(1 << BUTTON_A);
           break;
         case SDLK_u:
-          keypad->keyinput &= ~(1 << BUTTON_L);
+          gba->keypad.keyinput &= ~(1 << BUTTON_L);
           break;
         case SDLK_i:
-          keypad->keyinput &= ~(1 << BUTTON_R);
+          gba->keypad.keyinput &= ~(1 << BUTTON_R);
           break;
         case SDLK_RETURN:
-          keypad->keyinput &= ~(1 << BUTTON_START);
+          gba->keypad.keyinput &= ~(1 << BUTTON_START);
           break;
         case SDLK_RSHIFT:
-          keypad->keyinput &= ~(1 << BUTTON_SELECT);
+          gba->keypad.keyinput &= ~(1 << BUTTON_SELECT);
           break;
         }
         break;
       case SDL_KEYUP:
         switch (event.key.keysym.sym) {
         case SDLK_w:
-          keypad->keyinput |= (1 << BUTTON_UP);
+          gba->keypad.keyinput |= (1 << BUTTON_UP);
           break;
         case SDLK_s:
-          keypad->keyinput |= (1 << BUTTON_DOWN);
+          gba->keypad.keyinput |= (1 << BUTTON_DOWN);
           break;
         case SDLK_a:
-          keypad->keyinput |= (1 << BUTTON_LEFT);
+          gba->keypad.keyinput |= (1 << BUTTON_LEFT);
           break;
         case SDLK_d:
-          keypad->keyinput |= (1 << BUTTON_RIGHT);
+          gba->keypad.keyinput |= (1 << BUTTON_RIGHT);
           break;
         case SDLK_j:
-          keypad->keyinput |= (1 << BUTTON_B);
+          gba->keypad.keyinput |= (1 << BUTTON_B);
           break;
         case SDLK_k:
-          keypad->keyinput |= (1 << BUTTON_A);
+          gba->keypad.keyinput |= (1 << BUTTON_A);
           break;
         case SDLK_u:
-          keypad->keyinput |= (1 << BUTTON_L);
+          gba->keypad.keyinput |= (1 << BUTTON_L);
           break;
         case SDLK_i:
-          keypad->keyinput |= (1 << BUTTON_R);
+          gba->keypad.keyinput |= (1 << BUTTON_R);
           break;
         case SDLK_RETURN:
-          keypad->keyinput |= (1 << BUTTON_START);
+          gba->keypad.keyinput |= (1 << BUTTON_START);
           break;
         case SDLK_RSHIFT:
-          keypad->keyinput |= (1 << BUTTON_SELECT);
+          gba->keypad.keyinput |= (1 << BUTTON_SELECT);
           break;
         }
         break;
       }
     }
-    int total_cyles = 0;
-    while (total_cyles < CYCLES_PER_FRAME) {
-      int cycles = cpu_step(cpu, bus);
-      total_cyles += cycles;
-      ppu_step(ppu, cycles);
+    int total_cycles = 0;
+    while (total_cycles < CYCLES_PER_FRAME) {
+      int cycles = cpu_step(gba);
+      total_cycles += cycles;
+      ppu_step(&gba->ppu, cycles);
       // timer_step(timer, cycles);
       // dma_step(dma, cycles);
       // sound_step(sound, cycles);
@@ -162,7 +167,7 @@ int main(int argc, char *argv[]) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
-    SDL_UpdateTexture(texture, NULL, ppu->framebuffer, 240 * sizeof(u32));
+    SDL_UpdateTexture(texture, NULL, gba->ppu.framebuffer, 240 * sizeof(u32));
     SDL_RenderCopy(renderer, texture, NULL, NULL);
 
     SDL_RenderPresent(renderer);
@@ -185,14 +190,14 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  free(ppu);
-  free(cpu);
-  free(bus);
-
+shutdown:
   SDL_DestroyTexture(texture);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   SDL_Quit();
+
+  gba_free(gba);
+  free(gba);
 
   return 0;
 }

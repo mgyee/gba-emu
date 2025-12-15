@@ -1,7 +1,7 @@
 #pragma once
 #include "common.h"
 
-typedef struct {
+struct PPU {
   u32 framebuffer[240 * 160];
   int cycle;
 
@@ -84,8 +84,7 @@ typedef struct {
     int evb;
     int evy;
   } LCD;
-
-} PPU;
+};
 
 void ppu_init(PPU *ppu);
 void ppu_step(PPU *ppu, int cycles);

@@ -1,5 +1,19 @@
-#include "bus.h"
+#pragma once
 #include "common.h"
+
+typedef struct {
+  u16 keycnt;
+  u16 waitcnt;
+} Io;
+
+void io_init(Io *io);
+
+u8 io_read8(Gba *gba, u32 addr);
+void io_write8(Gba *gba, u32 addr, u8 val);
+u16 io_read16(Gba *gba, u32 addr);
+void io_write16(Gba *gba, u32 addr, u16 val);
+u32 io_read32(Gba *gba, u32 addr);
+void io_write32(Gba *gba, u32 addr, u32 val);
 
 // Display Control
 #define DISPCNT 0x04000000
@@ -55,9 +69,4 @@
 #define KEYINPUT 0x04000130
 #define KEYCNT 0x04000132
 
-u8 io_read8(Bus *bus, u32 addr);
-void io_write8(Bus *bus, u32 addr, u8 val);
-u16 io_read16(Bus *bus, u32 addr);
-void io_write16(Bus *bus, u32 addr, u16 val);
-u32 io_read32(Bus *bus, u32 addr);
-void io_write32(Bus *bus, u32 addr, u32 val);
+#define WAITCNT 0x04000204

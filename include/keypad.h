@@ -14,9 +14,9 @@ typedef enum {
   BUTTON_L
 } Button;
 
-typedef struct {
+struct Keypad {
   u16 keyinput;
   u16 keycnt;
-} Keypad;
+};
 
 void keypad_init(Keypad *keypad);

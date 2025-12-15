@@ -1,7 +1,9 @@
+#include "bus.h"
 #include "cpu.h"
+#include "gba.h"
 #include <stdio.h>
 
-typedef int (*ArmInstr)(CPU *cpu, Bus *bus, u32 instr);
+typedef int (*ArmInstr)(Gba *gba, u32 instr);
 
 static ArmInstr arm_lut[4096];
 
@@ -19,31 +21,34 @@ static inline int arm_decode(u32 instr) {
   return high | low;
 }
 
-u32 arm_fetch_next(CPU *cpu, Bus *bus) {
-  u32 instr = cpu->pipeline[0];
-  cpu->pipeline[0] = cpu->pipeline[1];
-  cpu->pipeline[1] = bus_read32(bus, PC, ACCESS_SEQ | ACCESS_CODE);
+u32 arm_fetch_next(Gba *gba) {
+  u32 instr = gba->cpu.pipeline[0];
+  gba->cpu.pipeline[0] = gba->cpu.pipeline[1];
+  gba->cpu.pipeline[1] =
+      bus_read32(gba, PC, gba->cpu.next_fetch_access | ACCESS_CODE);
+  gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 4;
   return instr;
 }
 
-void arm_fetch(CPU *cpu, Bus *bus) {
-  cpu->pipeline[0] = bus_read32(bus, PC, ACCESS_NONSEQ | ACCESS_CODE);
-  cpu->pipeline[1] = bus_read32(bus, PC + 4, ACCESS_SEQ | ACCESS_CODE);
+void arm_fetch(Gba *gba) {
+  gba->cpu.pipeline[0] = bus_read32(gba, PC, ACCESS_NONSEQ | ACCESS_CODE);
+  gba->cpu.pipeline[1] = bus_read32(gba, PC + 4, ACCESS_SEQ | ACCESS_CODE);
+  gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 8;
 }
 
-int arm_step(CPU *cpu, Bus *bus) {
-  u32 instr = arm_fetch_next(cpu, bus);
+int arm_step(Gba *gba) {
+  u32 instr = arm_fetch_next(gba);
 
-  if (!check_cond(cpu, instr)) {
+  if (!check_cond(&gba->cpu, instr)) {
 #ifdef DEBUG
     printf("%08X: Cond not met\n", instr);
 #endif
     return 0;
   }
   int index = arm_decode(instr);
-  return arm_lut[index](cpu, bus, instr);
+  return arm_lut[index](gba, instr);
 }
 
 typedef enum {
@@ -65,18 +70,17 @@ typedef enum {
   ALU_MVN
 } ArmALUOpcode;
 
-static int arm_undefined(CPU *cpu, Bus *bus, u32 instr) {
+static int arm_undefined(Gba *gba, u32 instr) {
 #ifdef DEBUG
   printf("%08X: undefined\n", instr);
 #endif
-  (void)cpu;
-  (void)bus;
+  (void)gba;
   (void)instr;
   return 0;
 }
 
 // MUL, MLA
-int arm_mul(CPU *cpu, Bus *bus, u32 instr) {
+int arm_mul(Gba *gba, u32 instr) {
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
   u8 rd = GET_BITS(instr, 16, 4);
@@ -107,17 +111,17 @@ int arm_mul(CPU *cpu, Bus *bus, u32 instr) {
   REG(rd) = res;
 
   if (rd == 15) {
-    arm_fetch(cpu, bus);
+    arm_fetch(gba);
   }
 
   if (s) {
-    set_flags_nz(cpu, res);
+    set_flags_nz(&gba->cpu, res);
   }
 
   return m_cycles;
 }
 // MULL, MLAL
-int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
+int arm_mull(Gba *gba, u32 instr) {
   bool sign = TEST_BIT(instr, 22);
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
@@ -148,7 +152,7 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
     REG(rdhi) = res >> 32;
 
     if (rdhi == 15 || rdlo == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
 
     if (s) {
@@ -170,7 +174,7 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
     REG(rdhi) = res >> 32;
 
     if (rdhi == 15 || rdlo == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
 
     if (s) {
@@ -186,7 +190,7 @@ int arm_mull(CPU *cpu, Bus *bus, u32 instr) {
   return m_cycles;
 }
 
-int arm_swp(CPU *cpu, Bus *bus, u32 instr) {
+int arm_swp(Gba *gba, u32 instr) {
   bool b = TEST_BIT(instr, 22);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
@@ -200,29 +204,29 @@ int arm_swp(CPU *cpu, Bus *bus, u32 instr) {
 
   if (b) {
     // byte
-    val = bus_read8(bus, REG(rn), ACCESS_NONSEQ);
-    bus_write8(bus, REG(rn), REG(rm) & 0xFF, ACCESS_NONSEQ);
+    val = bus_read8(gba, REG(rn), ACCESS_NONSEQ);
+    bus_write8(gba, REG(rn), REG(rm) & 0xFF, ACCESS_NONSEQ);
   } else {
     // word
     u32 addr = REG(rn);
-    val = bus_read32(bus, addr & ~3, ACCESS_NONSEQ);
+    val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
     u32 rot = (addr & 3) * 8;
     if (rot) {
       val = (val >> rot) | (val << (32 - rot));
     }
-    bus_write32(bus, addr & ~3, REG(rm), ACCESS_NONSEQ);
+    bus_write32(gba, addr & ~3, REG(rm), ACCESS_NONSEQ);
   }
 
   REG(rd) = val;
 
   if (rd == 15) {
-    arm_fetch(cpu, bus);
+    arm_fetch(gba);
   }
 
   return 1;
 }
 
-int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
+int arm_ldrh_strh(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -291,20 +295,20 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
     // LDRH
     u16 val;
     if (addr & 1) {
-      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ);
-      ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, val, 8, true);
+      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ);
+      ShiftRes sh_res = barrel_shifter(&gba->cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
-      REG(rd) = bus_read16(bus, addr, ACCESS_NONSEQ);
+      REG(rd) = bus_read16(gba, addr, ACCESS_NONSEQ);
     }
     if (rd == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
     cycles = 1;
   } else {
     // STRH
-    bus_write16(bus, addr & ~1, REG(rd), ACCESS_NONSEQ);
-    bus->last_access = ACCESS_NONSEQ;
+    bus_write16(gba, addr & ~1, REG(rd), ACCESS_NONSEQ);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   }
 
   if (wb && (!l || rd != rn)) {
@@ -314,7 +318,7 @@ int arm_ldrh_strh(CPU *cpu, Bus *bus, u32 instr) {
   return cycles;
 }
 
-int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
+int arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -382,19 +386,19 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
   if (h) {
     // Halfword
     if (addr & 1) {
-      val = bus_read16(bus, addr & ~1, ACCESS_NONSEQ) >> 8;
+      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ) >> 8;
       if (val & 0x80) {
         val |= 0xFFFFFF00;
       }
     } else {
-      val = bus_read16(bus, addr, ACCESS_NONSEQ);
+      val = bus_read16(gba, addr, ACCESS_NONSEQ);
       if (val & 0x8000) {
         val |= 0xFFFF0000;
       }
     }
   } else {
     // Byte
-    val = bus_read8(bus, addr, ACCESS_NONSEQ);
+    val = bus_read8(gba, addr, ACCESS_NONSEQ);
     if (val & 0x80) {
       val |= 0xFFFFFF00;
     }
@@ -402,7 +406,7 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
 
   REG(rd) = val;
   if (rd == 15) {
-    arm_fetch(cpu, bus);
+    arm_fetch(gba);
   }
 
   if (wb && (rd != rn)) {
@@ -412,8 +416,7 @@ int arm_ldrsb_ldrsh(CPU *cpu, Bus *bus, u32 instr) {
   return 1;
 }
 
-int arm_mrs(CPU *cpu, Bus *bus, u32 instr) {
-  (void)bus;
+int arm_mrs(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 rd = GET_BITS(instr, 12, 4);
 
@@ -436,7 +439,7 @@ int arm_mrs(CPU *cpu, Bus *bus, u32 instr) {
   return 0;
 }
 
-static void arm_do_msr(CPU *cpu, u32 val, bool r, u8 field_mask) {
+static void arm_do_msr(Gba *gba, u32 val, bool r, u8 field_mask) {
   u32 mask = 0;
   if (TEST_BIT(field_mask, 0))
     mask |= 0x000000FF; // c
@@ -462,13 +465,12 @@ static void arm_do_msr(CPU *cpu, u32 val, bool r, u8 field_mask) {
 
     u32 new_cpsr = (CPSR & ~mask) | (val & mask);
     new_cpsr |= 0x10;
-    cpu_set_mode(cpu, new_cpsr & 0x1F);
+    cpu_set_mode(&gba->cpu, new_cpsr & 0x1F);
     CPSR = new_cpsr;
   }
 }
 
-int arm_msr_reg(CPU *cpu, Bus *bus, u32 instr) {
-  (void)bus;
+int arm_msr_reg(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
   u8 rm = GET_BITS(instr, 0, 4);
@@ -493,13 +495,12 @@ int arm_msr_reg(CPU *cpu, Bus *bus, u32 instr) {
   printf("%08X: msr %s_%s, r%d\n", instr, r ? "spsr" : "cpsr", flags, rm);
 #endif
 
-  arm_do_msr(cpu, rm_val, r, field_mask);
+  arm_do_msr(gba, rm_val, r, field_mask);
 
   return 0;
 }
 
-int arm_msr_imm(CPU *cpu, Bus *bus, u32 instr) {
-  (void)bus;
+int arm_msr_imm(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
   u8 rotate = GET_BITS(instr, 8, 4);
@@ -527,12 +528,12 @@ int arm_msr_imm(CPU *cpu, Bus *bus, u32 instr) {
   printf("%08X: msr %s_%s, #%d\n", instr, r ? "spsr" : "cpsr", flags, val);
 #endif
 
-  arm_do_msr(cpu, val, r, field_mask);
+  arm_do_msr(gba, val, r, field_mask);
 
   return 0;
 }
 
-int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
+int arm_bx(Gba *gba, u32 instr) {
   u8 rn = GET_BITS(instr, 0, 4);
 
 #ifdef DEBUG
@@ -548,19 +549,23 @@ int arm_bx(CPU *cpu, Bus *bus, u32 instr) {
   if (thumb) {
     CPSR |= CPSR_T;
     PC = target & ~1;
-    thumb_fetch(cpu, bus);
+    thumb_fetch(gba);
   } else {
     CPSR &= ~CPSR_T;
     PC = target;
-    arm_fetch(cpu, bus);
+    arm_fetch(gba);
   }
 
   return 0;
 }
 
-static void arm_do_dproc(CPU *cpu, Bus *bus, ArmALUOpcode opcode, u32 op1,
-                         u32 op2, u8 rd, bool s, bool carry) {
+static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
+                         bool s, bool carry) {
+
+  CPU *cpu = &gba->cpu;
+
   u32 res = 0;
+
   bool overflow = get_flag(cpu, CPSR_V);
   bool arithmetic = false;
 
@@ -664,7 +669,7 @@ static void arm_do_dproc(CPU *cpu, Bus *bus, ArmALUOpcode opcode, u32 op1,
       opcode != ALU_CMN) {
     REG(rd) = res;
     if (r15_dst) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
   }
 
@@ -682,7 +687,7 @@ static void arm_do_dproc(CPU *cpu, Bus *bus, ArmALUOpcode opcode, u32 op1,
   }
 }
 
-int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
+int arm_data_proc_imm_shift(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -720,13 +725,14 @@ int arm_data_proc_imm_shift(CPU *cpu, Bus *bus, u32 instr) {
     rm_val -= 4;
   }
 
-  ShiftRes sh_res = barrel_shifter(cpu, shift_type, rm_val, shift_amt, true);
+  ShiftRes sh_res =
+      barrel_shifter(&gba->cpu, shift_type, rm_val, shift_amt, true);
 
-  arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
   return 0;
 }
 
-int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
+int arm_data_proc_reg_shift(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -760,13 +766,13 @@ int arm_data_proc_reg_shift(CPU *cpu, Bus *bus, u32 instr) {
   u32 rm_val = REG(rm);
 
   ShiftRes sh_res =
-      barrel_shifter(cpu, shift_type, rm_val, rs_val & 0xFF, false);
+      barrel_shifter(&gba->cpu, shift_type, rm_val, rs_val & 0xFF, false);
 
-  arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
   return 1;
 }
 
-int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
+int arm_data_proc_imm(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -779,7 +785,7 @@ int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
     rn_val -= 4;
   }
 
-  ShiftRes sh_res = barrel_shifter(cpu, SHIFT_ROR, imm, shift_amt, false);
+  ShiftRes sh_res = barrel_shifter(&gba->cpu, SHIFT_ROR, imm, shift_amt, false);
 
 #ifdef DEBUG
   if (op == ALU_MOV || op == ALU_MVN) {
@@ -793,11 +799,11 @@ int arm_data_proc_imm(CPU *cpu, Bus *bus, u32 instr) {
   }
 #endif
 
-  arm_do_dproc(cpu, bus, op, rn_val, sh_res.value, rd, s, sh_res.carry);
+  arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
   return 0;
 }
 
-static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
+static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
   bool p = TEST_BIT(instr, 24);
   bool b = TEST_BIT(instr, 22);
   bool w = TEST_BIT(instr, 21);
@@ -821,10 +827,10 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
     u32 val;
     if (b) {
       // LDRB
-      val = bus_read8(bus, addr, ACCESS_NONSEQ);
+      val = bus_read8(gba, addr, ACCESS_NONSEQ);
     } else {
       // LDR
-      val = bus_read32(bus, addr & ~3, ACCESS_NONSEQ);
+      val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
       u32 rot = (addr & 3) * 8;
       if (rot) {
         val = (val >> rot) | (val << (32 - rot));
@@ -832,7 +838,7 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
     }
     REG(rd) = val;
     if (rd == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
     cycles = 1;
   } else {
@@ -841,12 +847,12 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
 
     if (b) {
       // STRB
-      bus_write8(bus, addr, val & 0xFF, ACCESS_NONSEQ);
+      bus_write8(gba, addr, val & 0xFF, ACCESS_NONSEQ);
     } else {
       // STR
-      bus_write32(bus, addr & ~3, val, ACCESS_NONSEQ);
+      bus_write32(gba, addr & ~3, val, ACCESS_NONSEQ);
     }
-    bus->last_access = ACCESS_NONSEQ;
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   }
 
   if (wb && (!l || rd != rn)) {
@@ -856,7 +862,7 @@ static int arm_ldr_str_common(CPU *cpu, Bus *bus, u32 instr, u32 offset) {
   return cycles;
 }
 
-int arm_ldr_str_imm(CPU *cpu, Bus *bus, u32 instr) {
+int arm_ldr_str_imm(Gba *gba, u32 instr) {
   bool u = TEST_BIT(instr, 23);
   u32 offset = GET_BITS(instr, 0, 12);
 
@@ -882,10 +888,10 @@ int arm_ldr_str_imm(CPU *cpu, Bus *bus, u32 instr) {
     offset = -offset;
   }
 
-  return arm_ldr_str_common(cpu, bus, instr, offset);
+  return arm_ldr_str_common(gba, instr, offset);
 }
 
-int arm_ldr_str_reg(CPU *cpu, Bus *bus, u32 instr) {
+int arm_ldr_str_reg(Gba *gba, u32 instr) {
   bool u = TEST_BIT(instr, 23);
   u8 rm = GET_BITS(instr, 0, 4);
   Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
@@ -920,17 +926,18 @@ int arm_ldr_str_reg(CPU *cpu, Bus *bus, u32 instr) {
     rm_val -= 4;
   }
 
-  ShiftRes sh_res = barrel_shifter(cpu, shift_type, rm_val, shift_amt, true);
+  ShiftRes sh_res =
+      barrel_shifter(&gba->cpu, shift_type, rm_val, shift_amt, true);
   u32 offset = sh_res.value;
 
   if (!u) {
     offset = -offset;
   }
 
-  return arm_ldr_str_common(cpu, bus, instr, offset);
+  return arm_ldr_str_common(gba, instr, offset);
 }
 
-int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
+int arm_ldm_stm(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool s = TEST_BIT(instr, 22);
@@ -983,7 +990,7 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
       s && (!l || !transfer_pc) && mode != MODE_USR && mode != MODE_SYS;
 
   if (switch_to_user) {
-    cpu_set_mode(cpu, MODE_USR);
+    cpu_set_mode(&gba->cpu, MODE_USR);
   }
 
   u32 addr = rn_val;
@@ -998,25 +1005,26 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
     addr += 4;
   }
 
-  bus->last_access = ACCESS_NONSEQ;
+  Access access = ACCESS_NONSEQ;
 
   for (int i = first; i < 16; i++) {
     if ((list >> i) & 1) {
       if (l) {
         // Load
-        u32 val = bus_read32(bus, addr, ACCESS_SEQ);
+        u32 val = bus_read32(gba, addr, access);
         if (w && i == first) {
           REG(rn) = wb_addr;
         }
         REG(i) = val;
       } else {
         // Store
-        bus_write32(bus, addr, REG(i), ACCESS_SEQ);
+        bus_write32(gba, addr, REG(i), access);
         if (w && i == first) {
           REG(rn) = wb_addr;
         }
       }
       addr += 4;
+      access = ACCESS_SEQ;
     }
   }
 
@@ -1024,34 +1032,34 @@ int arm_ldm_stm(CPU *cpu, Bus *bus, u32 instr) {
     if (transfer_pc) {
       if (s) {
         u32 spsr = SPSR;
-        cpu_set_mode(cpu, spsr & 0x1F);
+        cpu_set_mode(&gba->cpu, spsr & 0x1F);
         CPSR = spsr;
       }
 
       if (CPSR & CPSR_T) {
-        thumb_fetch(cpu, bus);
+        thumb_fetch(gba);
       } else {
-        arm_fetch(cpu, bus);
+        arm_fetch(gba);
       }
     } else if (w && rn == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     }
   } else {
     if (w && rn == 15) {
-      arm_fetch(cpu, bus);
+      arm_fetch(gba);
     } else {
-      bus->last_access = ACCESS_NONSEQ;
+      gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     }
   }
 
   if (switch_to_user) {
-    cpu_set_mode(cpu, mode);
+    cpu_set_mode(&gba->cpu, mode);
   }
 
   return l;
 }
 
-int arm_branch(CPU *cpu, Bus *bus, u32 instr) {
+int arm_branch(Gba *gba, u32 instr) {
   bool link = TEST_BIT(instr, 24);
   s32 offset = GET_BITS(instr, 0, 24);
 
@@ -1070,48 +1078,45 @@ int arm_branch(CPU *cpu, Bus *bus, u32 instr) {
 
   PC += offset - 4;
 
-  arm_fetch(cpu, bus);
+  arm_fetch(gba);
 
   return 0;
 }
 
-int arm_stc_ldc(CPU *cpu, Bus *bus, u32 instr) {
+int arm_stc_ldc(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("STC/LDC");
-  (void)cpu;
-  (void)bus;
+  (void)gba;
   (void)instr;
 }
 
-int arm_cdp(CPU *cpu, Bus *bus, u32 instr) {
+int arm_cdp(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("CDP");
-  (void)cpu;
-  (void)bus;
+  (void)gba;
   (void)instr;
 }
 
-int arm_mcr_mrc(CPU *cpu, Bus *bus, u32 instr) {
+int arm_mcr_mrc(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("MCR/MRC");
-  (void)cpu;
-  (void)bus;
+  (void)gba;
   (void)instr;
 }
 
-int arm_swi(CPU *cpu, Bus *bus, u32 instr) {
+int arm_swi(Gba *gba, u32 instr) {
 #ifdef DEBUG
   u32 comment = GET_BITS(instr, 0, 24);
   printf("%08X: swi #%d\n", instr, comment);
 #endif
   (void)instr;
-  cpu->spsr_svc = CPSR;
-  cpu_set_mode(cpu, MODE_SVC);
+  gba->cpu.spsr_svc = CPSR;
+  cpu_set_mode(&gba->cpu, MODE_SVC);
   REG(14) = PC - 8;
   PC = 0x8;
   CPSR |= CPSR_I;
-  arm_fetch(cpu, bus);
+  arm_fetch(gba);
   return 0;
 }
 
-void arm_lut_init() {
+void arm_init_lut() {
   for (int i = 0; i < 4096; i++) {
     if ((i & 0b111111001111) == 0b000000001001) {
       arm_lut[i] = arm_mul; // MUL, MLA
