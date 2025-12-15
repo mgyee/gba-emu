@@ -547,8 +547,18 @@ u16 io_read16(Gba *gba, u32 addr) {
 }
 
 void io_write16(Gba *gba, u32 addr, u16 val) {
-  io_write8(gba, addr, val & 0xFF);
-  io_write8(gba, addr + 1, (val >> 8) & 0xFF);
+  switch (addr) {
+  case KEYCNT:
+    gba->keypad.keycnt = val;
+  case WAITCNT:
+    gba->io.waitcnt = val;
+    bus_update_waitstates(&gba->bus, val);
+    break;
+  default:
+    io_write8(gba, addr, val & 0xFF);
+    io_write8(gba, addr + 1, (val >> 8) & 0xFF);
+    break;
+  }
 }
 
 u32 io_read32(Gba *gba, u32 addr) {
