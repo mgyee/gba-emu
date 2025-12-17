@@ -89,5 +89,19 @@ struct PPU {
   } LCD;
 };
 
+typedef enum {
+  GFXMODE_NORMAL,
+  GFXMODE_BLEND,
+  GFXMODE_WINDOW,
+  GFXMODE_FORBIDDEN
+} GraphicsMode;
+
+typedef struct {
+  u16 attr[3];
+  u16 dummy;
+} ObjAttr;
+
+typedef enum { OBJMODE_REG, OBJMODE_AFF, OBJMODE_HIDE, OBJMODE_AFFDBL } ObjMode;
+
 void ppu_init(PPU *ppu);
 void ppu_step(PPU *ppu, int cycles);

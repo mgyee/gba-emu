@@ -31,6 +31,9 @@ typedef struct Keypad Keypad;
 #define TEST_BIT(val, n) ((val) & BIT(n))
 #define GET_BITS(val, pos, len) (((val) >> (pos)) & ((1U << (len)) - 1))
 
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
+
 #define NOT_YET_IMPLEMENTED(str)                                               \
   printf("%s not yet implemented: %s:%d\n", str, __FILE__, __LINE__);          \
   exit(1);
