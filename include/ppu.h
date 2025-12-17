@@ -1,8 +1,11 @@
 #pragma once
 #include "common.h"
 
+#define PIXELS_WIDTH 240
+#define PIXELS_HEIGHT 160
+
 struct PPU {
-  u32 framebuffer[240 * 160];
+  u32 framebuffer[PIXELS_WIDTH * PIXELS_HEIGHT];
   int cycle;
 
   u8 palram[0x400];

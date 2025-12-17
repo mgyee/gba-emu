@@ -491,12 +491,12 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     break;
   case MOSAIC:
     ppu->LCD.mosaic.val = (ppu->LCD.mosaic.val & 0xFF00) | val;
-    ppu->LCD.mosaic.bg_h = val & 0xF + 1;
+    ppu->LCD.mosaic.bg_h = (val & 0xF) + 1;
     ppu->LCD.mosaic.bg_v = ((val >> 4) & 0xF) + 1;
     break;
   case MOSAIC + 1:
     ppu->LCD.mosaic.val = (ppu->LCD.mosaic.val & 0x00FF) | (val << 8);
-    ppu->LCD.mosaic.obj_h = val & 0xF + 1;
+    ppu->LCD.mosaic.obj_h = (val & 0xF) + 1;
     ppu->LCD.mosaic.obj_v = ((val >> 4) & 0xF) + 1;
     break;
   case BLDCNT:
@@ -550,6 +550,7 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
   switch (addr) {
   case KEYCNT:
     gba->keypad.keycnt = val;
+    break;
   case WAITCNT:
     gba->io.waitcnt = val;
     bus_update_waitstates(&gba->bus, val);
