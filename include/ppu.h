@@ -4,7 +4,7 @@
 #define PIXELS_WIDTH 240
 #define PIXELS_HEIGHT 160
 
-struct PPU {
+struct Ppu {
   u32 framebuffer[PIXELS_WIDTH * PIXELS_HEIGHT];
   int cycle;
 
@@ -103,5 +103,5 @@ typedef struct {
 
 typedef enum { OBJMODE_REG, OBJMODE_AFF, OBJMODE_HIDE, OBJMODE_AFFDBL } ObjMode;
 
-void ppu_init(PPU *ppu);
-void ppu_step(PPU *ppu, int cycles);
+void ppu_init(Ppu *ppu);
+void ppu_step(Gba *gba, int cycles);

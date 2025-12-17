@@ -31,7 +31,7 @@ typedef enum {
   MODE_SYS = 0x1F
 } Mode;
 
-struct CPU {
+struct Cpu {
   union {
     struct {
       u32 r0;
@@ -75,8 +75,8 @@ struct CPU {
   u32 pipeline[2]; // Instruction pipeline
 };
 
-void cpu_init(CPU *cpu);
-void cpu_set_mode(CPU *cpu, u32 new_mode);
+void cpu_init(Cpu *cpu);
+void cpu_set_mode(Cpu *cpu, u32 new_mode);
 
 int cpu_step(Gba *gba);
 
@@ -90,12 +90,12 @@ int thumb_step(Gba *gba);
 void thumb_fetch(Gba *gba);
 u16 thumb_fetch_next(Gba *gba);
 
-bool check_cond(CPU *cpu, u32 instr);
+bool check_cond(Cpu *cpu, u32 instr);
 
-bool get_flag(CPU *cpu, u32 flag);
-void set_flags(CPU *cpu, u32 res, bool carry, bool overflow);
-void set_flags_nz(CPU *cpu, u32 res);
-void set_flags_nzc(CPU *cpu, u32 res, bool carry);
+bool get_flag(Cpu *cpu, u32 flag);
+void set_flags(Cpu *cpu, u32 res, bool carry, bool overflow);
+void set_flags_nz(Cpu *cpu, u32 res);
+void set_flags_nzc(Cpu *cpu, u32 res, bool carry);
 
 typedef enum { SHIFT_LSL, SHIFT_LSR, SHIFT_ASR, SHIFT_ROR } Shift;
 typedef struct {
@@ -103,9 +103,9 @@ typedef struct {
   bool carry;
 } ShiftRes;
 
-ShiftRes LSL(CPU *cpu, u32 val, u32 amt);
-ShiftRes LSR(CPU *cpu, u32 val, u32 amt, bool imm);
-ShiftRes ASR(CPU *cpu, u32 val, u32 amt, bool imm);
-ShiftRes ROR(CPU *cpu, u32 val, u32 amt, bool imm);
+ShiftRes LSL(Cpu *cpu, u32 val, u32 amt);
+ShiftRes LSR(Cpu *cpu, u32 val, u32 amt, bool imm);
+ShiftRes ASR(Cpu *cpu, u32 val, u32 amt, bool imm);
+ShiftRes ROR(Cpu *cpu, u32 val, u32 amt, bool imm);
 
-ShiftRes barrel_shifter(CPU *cpu, Shift shift, u32 val, u32 amt, bool imm);
+ShiftRes barrel_shifter(Cpu *cpu, Shift shift, u32 val, u32 amt, bool imm);

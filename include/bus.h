@@ -1,7 +1,7 @@
 #pragma once
 #include "common.h"
 
-typedef enum { ACCESS_NONSEQ = 0, ACCESS_SEQ = 1, ACCESS_CODE = 2 } Access;
+typedef enum { ACCESS_NONSEQ = 0, ACCESS_SEQ = 1 } Access;
 
 #define REGION_BIOS 0x0
 #define REGION_EWRAM 0x2

@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // PPU *ppu = malloc(sizeof(PPU));
+  // Ppu *ppu = malloc(sizeof(Ppu));
   // ppu_init(ppu);
   //
   // Keypad *keypad = malloc(sizeof(Keypad));
@@ -156,9 +156,10 @@ int main(int argc, char *argv[]) {
     }
     int total_cycles = 0;
     while (total_cycles < CYCLES_PER_FRAME) {
+      handle_interrupts(gba);
       int cycles = cpu_step(gba);
       total_cycles += cycles;
-      ppu_step(&gba->ppu, cycles);
+      ppu_step(gba, cycles);
       // timer_step(timer, cycles);
       // dma_step(dma, cycles);
       // sound_step(sound, cycles);

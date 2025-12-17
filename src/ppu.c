@@ -1,5 +1,6 @@
 #include "ppu.h"
 #include "common.h"
+#include "gba.h"
 #include <string.h>
 
 #define CYCLES_PER_SCANLINE 1232
@@ -20,7 +21,7 @@ static inline u32 rgb15_to_argb(u16 color) {
   return 0xFF000000 | (r << 16) | (g << 8) | b;
 }
 
-static void render_objs(PPU *ppu, int prio) {
+static void render_objs(Ppu *ppu, int prio) {
   if (!ppu->LCD.dispcnt.enable[4]) {
     return;
   }
@@ -148,14 +149,14 @@ static void render_objs(PPU *ppu, int prio) {
 
       if (idx != 0) {
         u16 color =
-            ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank >> 4))];
+            ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
         dest[screen_x] = rgb15_to_argb(color);
       }
     }
   }
 }
 
-static void render_bg_reg(PPU *ppu, int i, int prio) {
+static void render_bg_reg(Ppu *ppu, int i, int prio) {
   if (!ppu->LCD.dispcnt.enable[i] || (ppu->LCD.bgcnt[i].priority != prio)) {
     return;
   }
@@ -233,7 +234,7 @@ static void render_bg_reg(PPU *ppu, int i, int prio) {
   }
 }
 
-static void render_mode0(PPU *ppu) {
+static void render_mode0(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
   u16 background_color = ((u16 *)ppu->palram)[0];
@@ -251,7 +252,7 @@ static void render_mode0(PPU *ppu) {
   }
 }
 
-static void render_mode1(PPU *ppu) {
+static void render_mode1(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
   u16 background_color = ((u16 *)ppu->palram)[0];
@@ -269,7 +270,7 @@ static void render_mode1(PPU *ppu) {
   }
 }
 
-static void render_mode2(PPU *ppu) {
+static void render_mode2(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
   u16 background_color = ((u16 *)ppu->palram)[0];
@@ -287,7 +288,7 @@ static void render_mode2(PPU *ppu) {
   }
 }
 
-static void render_mode3(PPU *ppu) {
+static void render_mode3(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
   u16 *vram_ptr = (u16 *)ppu->vram + (ppu->LCD.vcount * PIXELS_WIDTH);
 
@@ -297,7 +298,7 @@ static void render_mode3(PPU *ppu) {
   }
 }
 
-static void render_mode4(PPU *ppu) {
+static void render_mode4(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
   u8 *vram_ptr = ppu->vram + (ppu->LCD.dispcnt.frame * 0xA000) +
                  (ppu->LCD.vcount * PIXELS_WIDTH);
@@ -309,7 +310,7 @@ static void render_mode4(PPU *ppu) {
   }
 }
 
-static void render_mode5(PPU *ppu) {
+static void render_mode5(Ppu *ppu) {
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
   if (ppu->LCD.vcount >= 128) {
     for (int x = 0; x < PIXELS_WIDTH; x++) {
@@ -330,9 +331,9 @@ static void render_mode5(PPU *ppu) {
   }
 }
 
-void ppu_init(PPU *ppu) { memset(ppu, 0, sizeof(PPU)); }
+void ppu_init(Ppu *ppu) { memset(ppu, 0, sizeof(Ppu)); }
 
-static void render_scanline(PPU *ppu) {
+static void render_scanline(Ppu *ppu) {
   if (ppu->LCD.dispcnt.forced_blank) {
     u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
     for (int i = 0; i < PIXELS_WIDTH; i++)
@@ -364,11 +365,15 @@ static void render_scanline(PPU *ppu) {
   }
 }
 
-void ppu_step(PPU *ppu, int cycles) {
+void ppu_step(Gba *gba, int cycles) {
+  Ppu *ppu = &gba->ppu;
   ppu->cycle += cycles;
 
   while (ppu->cycle >= CYCLES_PER_SCANLINE) {
     ppu->cycle -= CYCLES_PER_SCANLINE;
+
+    ppu->LCD.dispstat.hblank = 0;
+    ppu->LCD.dispstat.val &= ~2;
 
     if (ppu->LCD.vcount < VISIBLE_SCANLINES) {
       render_scanline(ppu);
@@ -380,10 +385,26 @@ void ppu_step(PPU *ppu, int cycles) {
       ppu->LCD.vcount = 0;
     }
 
+    if (ppu->LCD.vcount == ppu->LCD.dispstat.vcount_setting) {
+      ppu->LCD.dispstat.vcounter = 1;
+      ppu->LCD.dispstat.val |= 4;
+
+      if (ppu->LCD.dispstat.vcounter_irq) {
+        raise_interrupt(gba, INT_VCOUNT);
+      }
+    } else {
+      ppu->LCD.dispstat.vcounter = 0;
+      ppu->LCD.dispstat.val &= ~4;
+    }
+
     if (ppu->LCD.vcount >= VISIBLE_SCANLINES) {
       ppu->LCD.dispstat.val |= 1;
       ppu->LCD.dispstat.vblank = 1;
-    } else {
+
+      if (ppu->LCD.dispstat.vblank_irq) {
+        raise_interrupt(gba, INT_VBLANK);
+      }
+    } else if (ppu->LCD.vcount == 0) {
       ppu->LCD.dispstat.val &= ~1;
       ppu->LCD.dispstat.vblank = 0;
     }
@@ -391,17 +412,9 @@ void ppu_step(PPU *ppu, int cycles) {
     if (ppu->cycle >= H_VISIBLE_CYCLES) {
       ppu->LCD.dispstat.val |= 2;
       ppu->LCD.dispstat.hblank = 1;
-    } else {
-      ppu->LCD.dispstat.val &= ~2;
-      ppu->LCD.dispstat.hblank = 0;
-    }
-
-    if (ppu->LCD.vcount == ppu->LCD.dispstat.vcount_setting) {
-      ppu->LCD.dispstat.val |= 4;
-      ppu->LCD.dispstat.vblank_irq = 1;
-    } else {
-      ppu->LCD.dispstat.val &= ~4;
-      ppu->LCD.dispstat.vblank_irq = 0;
+      if (ppu->LCD.dispstat.hblank_irq) {
+        raise_interrupt(gba, INT_HBLANK);
+      }
     }
   }
 }

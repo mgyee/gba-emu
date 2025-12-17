@@ -2,6 +2,7 @@
 #include "bus.h"
 #include "common.h"
 #include "cpu.h"
+#include "interrupt.h"
 #include "io.h"
 #include "keypad.h"
 #include "ppu.h"
@@ -12,7 +13,7 @@ struct Gba {
 
   Rom rom;
 
-  CPU cpu;
+  Cpu cpu;
 
   Bus bus;
 
@@ -20,11 +21,11 @@ struct Gba {
 
   Io io;
 
-  PPU ppu;
+  Ppu ppu;
 
   // apu
 
-  // interrupt
+  InterruptManager int_mgr;
 
   // dma
 

@@ -7,9 +7,10 @@
 void io_init(Io *io) { memset(io, 0, sizeof(Io)); }
 
 u8 io_read8(Gba *gba, u32 addr) {
-  PPU *ppu = &gba->ppu;
+  Ppu *ppu = &gba->ppu;
   Keypad *keypad = &gba->keypad;
   Io *io = &gba->io;
+  InterruptManager *int_mgr = &gba->int_mgr;
 
   switch (addr) {
   case DISPCNT:
@@ -188,6 +189,20 @@ u8 io_read8(Gba *gba, u32 addr) {
     return keypad->keycnt & 0xFF;
   case KEYCNT + 1:
     return (keypad->keycnt >> 8) & 0xFF;
+
+  case IE:
+    return int_mgr->ie & 0xFF;
+  case IE + 1:
+    return (int_mgr->ie >> 8) & 0xFF;
+  case IF:
+    return int_mgr->if_ & 0xFF;
+  case IF + 1:
+    return (int_mgr->if_ >> 8) & 0xFF;
+  case IME:
+    return int_mgr->ime & 0xFF;
+  case IME + 1:
+    return (int_mgr->ime >> 8) & 0xFF;
+
   case WAITCNT:
     return io->waitcnt & 0xFF;
   case WAITCNT + 1:
@@ -198,9 +213,11 @@ u8 io_read8(Gba *gba, u32 addr) {
 }
 
 void io_write8(Gba *gba, u32 addr, u8 val) {
-  PPU *ppu = &gba->ppu;
+  Ppu *ppu = &gba->ppu;
   Keypad *keypad = &gba->keypad;
   Io *io = &gba->io;
+  InterruptManager *int_mgr = &gba->int_mgr;
+
   switch (addr) {
   case DISPCNT:
     ppu->LCD.dispcnt.val = (ppu->LCD.dispcnt.val & 0xFF00) | val;
@@ -529,6 +546,26 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   case KEYCNT + 1:
     keypad->keycnt = (keypad->keycnt & 0x00FF) | (val << 8);
     break;
+
+  case IE:
+    int_mgr->ie = (int_mgr->ie & 0xFF00) | val;
+    break;
+  case IE + 1:
+    int_mgr->ie = (int_mgr->ie & 0x00FF) | (val << 8);
+    break;
+  case IF:
+    int_mgr->if_ = (int_mgr->if_ & 0xFF00) | val;
+    break;
+  case IF + 1:
+    int_mgr->if_ = (int_mgr->if_ & 0x00FF) | (val << 8);
+    break;
+  case IME:
+    int_mgr->ime = (int_mgr->ime & 0xFF00) | val;
+    break;
+  case IME + 1:
+    int_mgr->ime = (int_mgr->ime & 0x00FF) | (val << 8);
+    break;
+
   case WAITCNT:
     io->waitcnt = (io->waitcnt & 0xFF00) | val;
     bus_update_waitstates(&gba->bus, io->waitcnt);

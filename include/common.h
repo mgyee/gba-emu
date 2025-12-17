@@ -16,8 +16,8 @@ typedef unsigned int uint;
 
 typedef struct Gba Gba;
 typedef struct Bus Bus;
-typedef struct CPU CPU;
-typedef struct PPU PPU;
+typedef struct Cpu Cpu;
+typedef struct Ppu Ppu;
 typedef struct Keypad Keypad;
 
 #define SCALE 4

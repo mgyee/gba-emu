@@ -69,4 +69,8 @@ void io_write32(Gba *gba, u32 addr, u32 val);
 #define KEYINPUT 0x04000130
 #define KEYCNT 0x04000132
 
+#define IE 0x04000200
+#define IF 0x04000202
+#define IME 0x04000208
+
 #define WAITCNT 0x04000204

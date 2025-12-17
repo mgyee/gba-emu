@@ -27,8 +27,12 @@ static inline void write_mem32(u8 *data, u32 offset, u32 value) {
 }
 
 void bus_init_waitstates(Bus *bus) {
-  memset(bus->wait_16, 1, sizeof(bus->wait_16));
-  memset(bus->wait_32, 1, sizeof(bus->wait_32));
+  for (int access = 0; access < 2; access++) {
+    for (int region = 0; region < 16; region++) {
+      bus->wait_16[access][region] = 1;
+      bus->wait_32[access][region] = 1;
+    }
+  }
 
   bus->wait_16[ACCESS_SEQ][REGION_BIOS] = 1;
   bus->wait_16[ACCESS_NONSEQ][REGION_BIOS] = 1;
@@ -113,6 +117,15 @@ void bus_init(Bus *bus) {
 
 static int get_region(u32 address) { return address >> 24; }
 
+static void add_cycles(Bus *bus, Access access, int region, int size) {
+  region &= 0xF;
+  if (size == 1 || size == 2) {
+    bus->cycle_count += bus->wait_16[access & 1][region];
+  } else if (size == 4) {
+    bus->cycle_count += bus->wait_32[access & 1][region];
+  }
+}
+
 u8 bus_read8(Gba *gba, u32 address, Access access) {
   u8 res;
   u32 offset;
@@ -161,14 +174,11 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
+  add_cycles(&gba->bus, access, region, 1);
   return res;
 }
 
 u16 bus_read16(Gba *gba, u32 address, Access access) {
-  if ((access & ACCESS_CODE) == ACCESS_CODE) {
-    address &= ~0x1;
-  }
   u16 res;
   u32 offset;
   int region = get_region(address);
@@ -216,14 +226,11 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
+  add_cycles(&gba->bus, access, region, 2);
   return res;
 }
 
 u32 bus_read32(Gba *gba, u32 address, Access access) {
-  if ((access & ACCESS_CODE) == ACCESS_CODE) {
-    address &= ~0x3;
-  }
   u32 res;
   u32 offset;
   int region = get_region(address);
@@ -271,7 +278,7 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_32[access & 1][region];
+  add_cycles(&gba->bus, access, region, 4);
   return res;
 }
 
@@ -310,12 +317,9 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
   default:
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
+  add_cycles(&gba->bus, access, region, 1);
 }
 void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
-  if ((access & ACCESS_CODE) == ACCESS_CODE) {
-    address &= ~0x1;
-  }
   u32 offset;
   int region = get_region(address);
   switch (region) {
@@ -350,13 +354,10 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   default:
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_16[access & 1][region];
+  add_cycles(&gba->bus, access, region, 2);
 }
 
 void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
-  if ((access & ACCESS_CODE) == ACCESS_CODE) {
-    address &= ~0x3;
-  }
   u32 offset;
   int region = get_region(address);
   switch (region) {
@@ -391,5 +392,5 @@ void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   default:
     break;
   }
-  gba->bus.cycle_count += gba->bus.wait_32[access & 1][region];
+  add_cycles(&gba->bus, access, region, 4);
 }

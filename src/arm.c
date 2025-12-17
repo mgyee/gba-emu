@@ -24,16 +24,15 @@ static inline int arm_decode(u32 instr) {
 u32 arm_fetch_next(Gba *gba) {
   u32 instr = gba->cpu.pipeline[0];
   gba->cpu.pipeline[0] = gba->cpu.pipeline[1];
-  gba->cpu.pipeline[1] =
-      bus_read32(gba, PC, gba->cpu.next_fetch_access | ACCESS_CODE);
+  gba->cpu.pipeline[1] = bus_read32(gba, PC, gba->cpu.next_fetch_access);
   gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 4;
   return instr;
 }
 
 void arm_fetch(Gba *gba) {
-  gba->cpu.pipeline[0] = bus_read32(gba, PC, ACCESS_NONSEQ | ACCESS_CODE);
-  gba->cpu.pipeline[1] = bus_read32(gba, PC + 4, ACCESS_SEQ | ACCESS_CODE);
+  gba->cpu.pipeline[0] = bus_read32(gba, PC, ACCESS_NONSEQ);
+  gba->cpu.pipeline[1] = bus_read32(gba, PC + 4, ACCESS_SEQ);
   gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 8;
 }
@@ -562,7 +561,7 @@ int arm_bx(Gba *gba, u32 instr) {
 static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
                          bool s, bool carry) {
 
-  CPU *cpu = &gba->cpu;
+  Cpu *cpu = &gba->cpu;
 
   u32 res = 0;
 
@@ -1109,9 +1108,10 @@ int arm_swi(Gba *gba, u32 instr) {
   (void)instr;
   gba->cpu.spsr_svc = CPSR;
   cpu_set_mode(&gba->cpu, MODE_SVC);
-  REG(14) = PC - 8;
-  PC = 0x8;
+  CPSR &= ~CPSR_T;
   CPSR |= CPSR_I;
+  LR = PC - 8;
+  PC = 0x8;
   arm_fetch(gba);
   return 0;
 }

@@ -16,16 +16,15 @@ static inline int thumb_decode(u16 instr) { return ((instr >> 6) & 0x3FF); }
 u16 thumb_fetch_next(Gba *gba) {
   u16 instr = gba->cpu.pipeline[0];
   gba->cpu.pipeline[0] = gba->cpu.pipeline[1];
-  gba->cpu.pipeline[1] =
-      bus_read16(gba, PC, gba->cpu.next_fetch_access | ACCESS_CODE);
+  gba->cpu.pipeline[1] = bus_read16(gba, PC, gba->cpu.next_fetch_access);
   gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 2;
   return instr;
 }
 
 void thumb_fetch(Gba *gba) {
-  gba->cpu.pipeline[0] = bus_read16(gba, PC, ACCESS_NONSEQ | ACCESS_CODE);
-  gba->cpu.pipeline[1] = bus_read16(gba, PC + 2, ACCESS_SEQ | ACCESS_CODE);
+  gba->cpu.pipeline[0] = bus_read16(gba, PC, ACCESS_NONSEQ);
+  gba->cpu.pipeline[1] = bus_read16(gba, PC + 2, ACCESS_SEQ);
   gba->cpu.next_fetch_access = ACCESS_SEQ;
   PC += 4;
 }
@@ -198,7 +197,7 @@ static int thumb_data_proc(Gba *gba, u16 instr) {
 
   int cycles = 0;
 
-  CPU *cpu = &gba->cpu;
+  Cpu *cpu = &gba->cpu;
 
   switch (opcode) {
   case THUMB_AND:
@@ -845,7 +844,7 @@ static int thumb_bcc(Gba *gba, u16 instr) {
   }
 #endif
 
-  CPU *cpu = &gba->cpu;
+  Cpu *cpu = &gba->cpu;
 
   bool jump = false;
   switch (cond) {
