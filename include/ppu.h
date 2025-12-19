@@ -101,6 +101,17 @@ typedef struct {
   u16 dummy;
 } ObjAttr;
 
+typedef struct {
+  u16 fill0[3];
+  s16 pa;
+  u16 fill1[3];
+  s16 pb;
+  u16 fill2[3];
+  s16 pc;
+  u16 fill3[3];
+  s16 pd;
+} ObjAffine;
+
 typedef enum { OBJMODE_REG, OBJMODE_AFF, OBJMODE_HIDE, OBJMODE_AFFDBL } ObjMode;
 
 void ppu_init(Ppu *ppu);

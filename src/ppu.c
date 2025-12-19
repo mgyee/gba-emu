@@ -9,6 +9,11 @@
 #define H_VISIBLE_CYCLES 960
 #define H_BLNANK_CYCLES 272
 
+// [Shape][Size] -> {Width, Height}
+static const int sizes[3][4][2] = {{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
+                                   {{16, 8}, {32, 8}, {32, 16}, {64, 32}},
+                                   {{8, 16}, {8, 32}, {16, 32}, {32, 64}}};
+
 static inline u32 rgb15_to_argb(u16 color) {
   u32 r = (color & 0x1F);
   u32 g = (color >> 5) & 0x1F;
@@ -21,29 +26,245 @@ static inline u32 rgb15_to_argb(u16 color) {
   return 0xFF000000 | (r << 16) | (g << 8) | b;
 }
 
+static void render_obj_reg(Ppu *ppu, ObjAttr *obj) {
+  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+  int screen_y = ppu->LCD.vcount;
+
+  u16 attr0 = obj->attr[0];
+  u16 attr1 = obj->attr[1];
+  u16 attr2 = obj->attr[2];
+
+  int disable = TEST_BIT(attr0, 9);
+  if (disable) {
+    return;
+  }
+
+  int obj_y = GET_BITS(attr0, 0, 8);
+  if (obj_y >= PIXELS_HEIGHT) {
+    obj_y -= 256;
+  }
+  int obj_x = GET_BITS(attr1, 0, 9);
+  if (obj_x >= PIXELS_WIDTH) {
+    obj_x -= 512;
+  }
+
+  int shape = GET_BITS(attr0, 14, 2);
+  int size = GET_BITS(attr1, 14, 2);
+
+  int width = sizes[shape][size][0];
+  int height = sizes[shape][size][1];
+
+  int left = MIN(PIXELS_WIDTH, MAX(obj_x, 0));
+  int right = MIN(PIXELS_WIDTH, MAX(obj_x + width, 0));
+
+  if (screen_y < obj_y || screen_y >= (obj_y + height)) {
+    return;
+  }
+
+  int mosaic = TEST_BIT(attr0, 12);
+  int color_mode = TEST_BIT(attr0, 13);
+  int hf = TEST_BIT(attr1, 12);
+  int vf = TEST_BIT(attr1, 13);
+  int tile_idx = GET_BITS(attr2, 0, 10);
+  int pal_bank = GET_BITS(attr2, 12, 4);
+
+  int sprite_y = screen_y - obj_y;
+  if (mosaic) {
+    int mosaic_size = ppu->LCD.mosaic.obj_v + 1;
+    sprite_y -= sprite_y % mosaic_size;
+  }
+  if (vf) {
+    sprite_y = height - sprite_y - 1;
+  }
+
+  int tile_y = sprite_y >> 3;
+  int tile_stride;
+  if (!ppu->LCD.dispcnt.oam_mapping_1d) {
+    tile_stride = 32;
+  } else {
+    if (color_mode) {
+      tile_stride = width >> 2;
+    } else {
+      tile_stride = width >> 3;
+    }
+  }
+
+  int tile_start = tile_idx + (tile_y * tile_stride);
+
+  int subtile_y = sprite_y % 8;
+
+  for (int screen_x = left; screen_x < right; screen_x++) {
+    int sprite_x = screen_x - obj_x;
+    if (mosaic) {
+      int mosaic_size = ppu->LCD.mosaic.obj_h + 1;
+      sprite_x -= sprite_x % mosaic_size;
+    }
+    if (hf) {
+      sprite_x = width - sprite_x - 1;
+    }
+
+    int tile_x = sprite_x / 8;
+    int subtile_x = sprite_x % 8;
+
+    int curr_tile = tile_start + (1 + color_mode) * tile_x;
+
+    int tile_addr = 0x10000 + ((curr_tile % 1024) * 32);
+
+    int idx;
+    if (color_mode) {
+      tile_addr += (subtile_y * 8) + subtile_x;
+      idx = ppu->vram[tile_addr];
+    } else {
+      tile_addr += (subtile_y * 4) + (subtile_x / 2);
+      idx = ppu->vram[tile_addr];
+      if (subtile_x & 1) {
+        idx >>= 4;
+      } else {
+        idx &= 0xF;
+      }
+    }
+
+    if (idx != 0) {
+      u16 color =
+          ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
+      dest[screen_x] = rgb15_to_argb(color);
+    }
+  }
+}
+
+static void render_obj_aff(Ppu *ppu, ObjAttr *obj) {
+  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+  int screen_y = ppu->LCD.vcount;
+
+  u16 attr0 = obj->attr[0];
+  u16 attr1 = obj->attr[1];
+  u16 attr2 = obj->attr[2];
+
+  int obj_y = GET_BITS(attr0, 0, 8);
+  if (obj_y >= PIXELS_HEIGHT) {
+    obj_y -= 256;
+  }
+  int obj_x = GET_BITS(attr1, 0, 9);
+  if (obj_x >= PIXELS_WIDTH) {
+    obj_x -= 512;
+  }
+
+  int shape = GET_BITS(attr0, 14, 2);
+  int size = GET_BITS(attr1, 14, 2);
+
+  int width = sizes[shape][size][0];
+  int height = sizes[shape][size][1];
+
+  int mode = GET_BITS(attr0, 8, 2);
+  int draw_width = width;
+  int draw_height = height;
+
+  if (mode == OBJMODE_AFFDBL) {
+    draw_width *= 2;
+    draw_height *= 2;
+  }
+
+  int center_x = width / 2;
+  int center_y = height / 2;
+  int draw_center_x = draw_width / 2;
+  int draw_center_y = draw_height / 2;
+
+  int left = MIN(PIXELS_WIDTH, MAX(obj_x, 0));
+  int right = MIN(PIXELS_WIDTH, MAX(obj_x + draw_width, 0));
+
+  if (screen_y < obj_y || screen_y >= (obj_y + draw_height)) {
+    return;
+  }
+
+  int mosaic = TEST_BIT(attr0, 12);
+  int color_mode = TEST_BIT(attr0, 13);
+  int aff_idx = GET_BITS(attr1, 9, 5);
+  int tile_idx = GET_BITS(attr2, 0, 10);
+  int pal_bank = GET_BITS(attr2, 12, 4);
+
+  ObjAffine *oam = (ObjAffine *)ppu->oam;
+  ObjAffine aff = oam[aff_idx];
+
+  int sprite_y = screen_y - obj_y;
+  if (mosaic) {
+    int mosaic_size = ppu->LCD.mosaic.obj_v + 1;
+    sprite_y -= sprite_y % mosaic_size;
+  }
+
+  int dy = sprite_y - draw_center_y;
+
+  int tile_stride;
+  if (!ppu->LCD.dispcnt.oam_mapping_1d) {
+    tile_stride = 32;
+  } else {
+    if (color_mode) {
+      tile_stride = width >> 2;
+    } else {
+      tile_stride = width >> 3;
+    }
+  }
+
+  for (int screen_x = left; screen_x < right; screen_x++) {
+    int sprite_x = screen_x - obj_x;
+    if (mosaic) {
+      int mosaic_size = ppu->LCD.mosaic.obj_h + 1;
+      sprite_x -= sprite_x % mosaic_size;
+    }
+
+    int dx = sprite_x - draw_center_x;
+
+    int tex_x = ((aff.pa * dx + aff.pb * dy) >> 8) + center_x;
+    int tex_y = ((aff.pc * dx + aff.pd * dy) >> 8) + center_y;
+
+    if (tex_x < 0 || tex_x >= width || tex_y < 0 || tex_y >= height) {
+      continue;
+    }
+
+    int tile_x = tex_x >> 3;
+    int subtile_x = tex_x % 8;
+
+    int tile_y = tex_y >> 3;
+    int subtile_y = tex_y % 8;
+
+    int tile_start = tile_idx + (tile_y * tile_stride);
+
+    int curr_tile = tile_start + (1 + color_mode) * tile_x;
+
+    int tile_addr = 0x10000 + ((curr_tile % 1024) * 32);
+
+    int idx;
+    if (color_mode) {
+      tile_addr += (subtile_y * 8) + subtile_x;
+      idx = ppu->vram[tile_addr];
+    } else {
+      tile_addr += (subtile_y * 4) + (subtile_x / 2);
+      idx = ppu->vram[tile_addr];
+      if (subtile_x & 1) {
+        idx >>= 4;
+      } else {
+        idx &= 0xF;
+      }
+    }
+
+    if (idx != 0) {
+      u16 color =
+          ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
+      dest[screen_x] = rgb15_to_argb(color);
+    }
+  }
+}
+
 static void render_objs(Ppu *ppu, int prio) {
   if (!ppu->LCD.dispcnt.enable[4]) {
     return;
   }
 
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-
   ObjAttr *oam = (ObjAttr *)ppu->oam;
-
-  // [Shape][Size] -> {Width, Height}
-  static const int sizes[3][4][2] = {{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
-                                     {{16, 8}, {32, 8}, {32, 16}, {64, 32}},
-                                     {{8, 16}, {8, 32}, {16, 32}, {32, 64}}};
-
-  int screen_y = ppu->LCD.vcount;
 
   for (int i = 127; i >= 0; i--) {
     ObjAttr *obj = &oam[i];
-    u16 attr0 = obj->attr[0];
-    u16 attr1 = obj->attr[1];
-    u16 attr2 = obj->attr[2];
     int obj_prio = GET_BITS(obj->attr[2], 10, 2);
-    int gfx_mode = GET_BITS(attr0, 10, 2);
+    int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
 
     if (obj_prio != prio || gfx_mode == GFXMODE_FORBIDDEN) {
       continue;
@@ -55,103 +276,12 @@ static void render_objs(Ppu *ppu, int prio) {
     case OBJMODE_HIDE:
       continue;
     case OBJMODE_REG:
+      render_obj_reg(ppu, obj);
       break;
     case OBJMODE_AFF:
     case OBJMODE_AFFDBL:
+      render_obj_aff(ppu, obj);
       break;
-    }
-
-    int obj_y = GET_BITS(attr0, 0, 8);
-    if (obj_y >= PIXELS_HEIGHT) {
-      obj_y -= 256;
-    }
-    int obj_x = GET_BITS(attr1, 0, 9);
-    if (obj_x >= PIXELS_WIDTH) {
-      obj_x -= 512;
-    }
-
-    int shape = GET_BITS(attr0, 14, 2);
-    int size = GET_BITS(attr1, 14, 2);
-
-    int width = sizes[shape][size][0];
-    int height = sizes[shape][size][1];
-
-    int left = MIN(PIXELS_WIDTH, MAX(obj_x, 0));
-    int right = MIN(PIXELS_WIDTH, MAX(obj_x + width, 0));
-
-    if (screen_y < obj_y || screen_y >= (obj_y + height)) {
-      continue;
-    }
-
-    int mosaic = TEST_BIT(attr0, 12);
-    int color_mode = TEST_BIT(attr0, 13);
-    int hf = TEST_BIT(attr1, 12);
-    int vf = TEST_BIT(attr1, 13);
-    int tile_idx = GET_BITS(attr2, 0, 10);
-    int pal_bank = GET_BITS(attr2, 12, 4);
-
-    int sprite_y = screen_y - obj_y;
-    if (mosaic) {
-      int mosaic_size = ppu->LCD.mosaic.obj_v + 1;
-      sprite_y -= sprite_y % mosaic_size;
-    }
-    if (vf) {
-      sprite_y = height - sprite_y - 1;
-    }
-
-    int tile_y = sprite_y >> 3;
-    int tile_stride;
-    if (!ppu->LCD.dispcnt.oam_mapping_1d) {
-      tile_stride = 32;
-    } else {
-      if (color_mode) {
-        tile_stride = width >> 2;
-      } else {
-        tile_stride = width >> 3;
-      }
-    }
-
-    int tile_start = tile_idx + (tile_y * tile_stride);
-
-    int subtile_y = sprite_y % 8;
-
-    for (int x = left; x < right; x++) {
-      int screen_x = x;
-      int sprite_x = x - obj_x;
-      if (mosaic) {
-        int mosaic_size = ppu->LCD.mosaic.obj_h + 1;
-        sprite_x -= sprite_x % mosaic_size;
-      }
-      if (hf) {
-        sprite_x = width - sprite_x - 1;
-      }
-
-      int tile_x = sprite_x / 8;
-      int subtile_x = sprite_x % 8;
-
-      int curr_tile = tile_start + (1 + color_mode) * tile_x;
-
-      int tile_addr = 0x10000 + ((curr_tile % 1024) * 32);
-
-      int idx;
-      if (color_mode) {
-        tile_addr += (subtile_y * 8) + subtile_x;
-        idx = ppu->vram[tile_addr];
-      } else {
-        tile_addr += (subtile_y * 4) + (subtile_x / 2);
-        idx = ppu->vram[tile_addr];
-        if (subtile_x & 1) {
-          idx >>= 4;
-        } else {
-          idx &= 0xF;
-        }
-      }
-
-      if (idx != 0) {
-        u16 color =
-            ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
-        dest[screen_x] = rgb15_to_argb(color);
-      }
     }
   }
 }
