@@ -375,34 +375,42 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     ppu->LCD.bgpd[0] = (ppu->LCD.bgpd[0] & 0x00FF) | (val << 8);
     break;
   case BG2X:
-    ppu->LCD.bgx[0].internal = (ppu->LCD.bgx[0].internal & 0xFFFFFF00) | val;
+    ppu->LCD.bgx[0].current = (ppu->LCD.bgx[0].current & 0xFFFFFF00) | val;
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
     break;
   case BG2X + 1:
-    ppu->LCD.bgx[0].internal =
-        (ppu->LCD.bgx[0].internal & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgx[0].current =
+        (ppu->LCD.bgx[0].current & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
     break;
   case BG2X + 2:
-    ppu->LCD.bgx[0].internal =
-        (ppu->LCD.bgx[0].internal & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgx[0].current =
+        (ppu->LCD.bgx[0].current & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
     break;
   case BG2X + 3:
-    ppu->LCD.bgx[0].internal =
-        (ppu->LCD.bgx[0].internal & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgx[0].current =
+        (ppu->LCD.bgx[0].current & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
     break;
   case BG2Y:
-    ppu->LCD.bgy[0].internal = (ppu->LCD.bgy[0].internal & 0xFFFFFF00) | val;
+    ppu->LCD.bgy[0].current = (ppu->LCD.bgy[0].current & 0xFFFFFF00) | val;
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
     break;
   case BG2Y + 1:
-    ppu->LCD.bgy[0].internal =
-        (ppu->LCD.bgy[0].internal & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgy[0].current =
+        (ppu->LCD.bgy[0].current & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
     break;
   case BG2Y + 2:
-    ppu->LCD.bgy[0].internal =
-        (ppu->LCD.bgy[0].internal & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgy[0].current =
+        (ppu->LCD.bgy[0].current & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
     break;
   case BG2Y + 3:
-    ppu->LCD.bgy[0].internal =
-        (ppu->LCD.bgy[0].internal & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgy[0].current =
+        (ppu->LCD.bgy[0].current & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
     break;
   case BG3PA:
     ppu->LCD.bgpa[1] = (ppu->LCD.bgpa[1] & 0xFF00) | val;
@@ -429,34 +437,42 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     ppu->LCD.bgpd[1] = (ppu->LCD.bgpd[1] & 0x00FF) | (val << 8);
     break;
   case BG3X:
-    ppu->LCD.bgx[1].internal = (ppu->LCD.bgx[1].internal & 0xFFFFFF00) | val;
+    ppu->LCD.bgx[1].current = (ppu->LCD.bgx[1].current & 0xFFFFFF00) | val;
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
     break;
   case BG3X + 1:
-    ppu->LCD.bgx[1].internal =
-        (ppu->LCD.bgx[1].internal & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgx[1].current =
+        (ppu->LCD.bgx[1].current & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
     break;
   case BG3X + 2:
-    ppu->LCD.bgx[1].internal =
-        (ppu->LCD.bgx[1].internal & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgx[1].current =
+        (ppu->LCD.bgx[1].current & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
     break;
   case BG3X + 3:
-    ppu->LCD.bgx[1].internal =
-        (ppu->LCD.bgx[1].internal & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgx[1].current =
+        (ppu->LCD.bgx[1].current & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
     break;
   case BG3Y:
-    ppu->LCD.bgy[1].internal = (ppu->LCD.bgy[1].internal & 0xFFFFFF00) | val;
+    ppu->LCD.bgy[1].current = (ppu->LCD.bgy[1].current & 0xFFFFFF00) | val;
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
     break;
   case BG3Y + 1:
-    ppu->LCD.bgy[1].internal =
-        (ppu->LCD.bgy[1].internal & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgy[1].current =
+        (ppu->LCD.bgy[1].current & 0xFFFF00FF) | (val << 8);
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
     break;
   case BG3Y + 2:
-    ppu->LCD.bgy[1].internal =
-        (ppu->LCD.bgy[1].internal & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgy[1].current =
+        (ppu->LCD.bgy[1].current & 0xFF00FFFF) | (val << 16);
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
     break;
   case BG3Y + 3:
-    ppu->LCD.bgy[1].internal =
-        (ppu->LCD.bgy[1].internal & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgy[1].current =
+        (ppu->LCD.bgy[1].current & 0x00FFFFFF) | (val << 24);
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
     break;
   case WIN0H:
     ppu->LCD.winh[0] = (ppu->LCD.winh[0] & 0xFF00) | val;
@@ -584,12 +600,54 @@ u16 io_read16(Gba *gba, u32 addr) {
 }
 
 void io_write16(Gba *gba, u32 addr, u16 val) {
+  Ppu *ppu = &gba->ppu;
+  Io *io = &gba->io;
+  Keypad *keypad = &gba->keypad;
+
   switch (addr) {
+  case BG2X:
+    ppu->LCD.bgx[0].current = (ppu->LCD.bgx[0].current & 0xFFFF0000) | val;
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
+    break;
+  case BG2X + 2:
+    ppu->LCD.bgx[0].current =
+        (ppu->LCD.bgx[0].current & 0x0000FFFF) | (val << 16);
+    ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
+    break;
+  case BG2Y:
+    ppu->LCD.bgy[0].current = (ppu->LCD.bgy[0].current & 0xFFFF0000) | val;
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
+    break;
+  case BG2Y + 2:
+    ppu->LCD.bgy[0].current =
+        (ppu->LCD.bgy[0].current & 0x0000FFFF) | (val << 16);
+    ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
+    break;
+  case BG3X:
+    ppu->LCD.bgx[1].current = (ppu->LCD.bgx[1].current & 0xFFFF0000) | val;
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
+    break;
+  case BG3X + 2:
+    ppu->LCD.bgx[1].current =
+        (ppu->LCD.bgx[1].current & 0x0000FFFF) | (val << 16);
+    ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
+    break;
+  case BG3Y:
+    ppu->LCD.bgy[1].current = (ppu->LCD.bgy[1].current & 0xFFFF0000) | val;
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
+    break;
+  case BG3Y + 2:
+    ppu->LCD.bgy[1].current =
+        (ppu->LCD.bgy[1].current & 0x0000FFFF) | (val << 16);
+    ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
+    break;
+
+    // Keypad
   case KEYCNT:
-    gba->keypad.keycnt = val;
+    keypad->keycnt = val;
     break;
   case WAITCNT:
-    gba->io.waitcnt = val;
+    io->waitcnt = val;
     bus_update_waitstates(&gba->bus, val);
     break;
   default:
@@ -604,6 +662,26 @@ u32 io_read32(Gba *gba, u32 addr) {
 }
 
 void io_write32(Gba *gba, u32 addr, u32 val) {
+  Ppu *ppu = &gba->ppu;
+
+  switch (addr) {
+  case BG2X:
+    ppu->LCD.bgx[0].current = val;
+    ppu->LCD.bgx[0].internal = val;
+    break;
+  case BG2Y:
+    ppu->LCD.bgy[0].current = val;
+    ppu->LCD.bgy[0].internal = val;
+    break;
+  case BG3X:
+    ppu->LCD.bgx[1].current = val;
+    ppu->LCD.bgx[1].internal = val;
+    break;
+  case BG3Y:
+    ppu->LCD.bgy[1].current = val;
+    ppu->LCD.bgy[1].internal = val;
+    break;
+  }
   io_write16(gba, addr, val & 0xFFFF);
   io_write16(gba, addr + 2, (val >> 16) & 0xFFFF);
 }

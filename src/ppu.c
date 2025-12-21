@@ -7,7 +7,12 @@
 #define SCANLINES_PER_FRAME 228
 #define VISIBLE_SCANLINES 160
 #define H_VISIBLE_CYCLES 960
-#define H_BLNANK_CYCLES 272
+#define H_BLANK_CYCLES 272
+
+// Line Buffer Flags
+#define OBJ_PIXEL_PRESENT 0x80000000
+#define OBJ_PIXEL_MOSAIC 0x40000000 // Mosaic enabled for this pixel
+#define OBJ_COLOR_MASK 0x00FFFFFF
 
 // [Shape][Size] -> {Width, Height}
 static const int sizes[3][4][2] = {{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
@@ -26,8 +31,9 @@ static inline u32 rgb15_to_argb(u16 color) {
   return 0xFF000000 | (r << 16) | (g << 8) | b;
 }
 
-static void render_obj_reg(Ppu *ppu, ObjAttr *obj) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+static void render_obj_reg(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
+  u8 *tile_base = ppu->vram + 0x10000;
+
   int screen_y = ppu->LCD.vcount;
 
   u16 attr0 = obj->attr[0];
@@ -70,8 +76,8 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj) {
 
   int sprite_y = screen_y - obj_y;
   if (mosaic) {
-    int mosaic_size = ppu->LCD.mosaic.obj_v + 1;
-    sprite_y -= sprite_y % mosaic_size;
+    int mos_v = ppu->LCD.mosaic.obj_v + 1;
+    sprite_y -= sprite_y % mos_v;
   }
   if (vf) {
     sprite_y = height - sprite_y - 1;
@@ -93,12 +99,8 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj) {
 
   int subtile_y = sprite_y % 8;
 
-  for (int screen_x = left; screen_x < right; screen_x++) {
-    int sprite_x = screen_x - obj_x;
-    if (mosaic) {
-      int mosaic_size = ppu->LCD.mosaic.obj_h + 1;
-      sprite_x -= sprite_x % mosaic_size;
-    }
+  for (int x = left; x < right; x++) {
+    int sprite_x = x - obj_x;
     if (hf) {
       sprite_x = width - sprite_x - 1;
     }
@@ -108,32 +110,39 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj) {
 
     int curr_tile = tile_start + (1 + color_mode) * tile_x;
 
-    int tile_addr = 0x10000 + ((curr_tile % 1024) * 32);
+    int tile_addr = ((curr_tile % 1024) * 32);
 
-    int idx;
+    int color_idx;
     if (color_mode) {
       tile_addr += (subtile_y * 8) + subtile_x;
-      idx = ppu->vram[tile_addr];
+      color_idx = tile_base[tile_addr];
     } else {
       tile_addr += (subtile_y * 4) + (subtile_x / 2);
-      idx = ppu->vram[tile_addr];
+      color_idx = tile_base[tile_addr];
       if (subtile_x & 1) {
-        idx >>= 4;
+        color_idx >>= 4;
       } else {
-        idx &= 0xF;
+        color_idx &= 0xF;
       }
     }
 
-    if (idx != 0) {
+    if (color_idx != 0) {
       u16 color =
-          ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
-      dest[screen_x] = rgb15_to_argb(color);
+          ((u16 *)ppu
+               ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
+      u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
+      val |= OBJ_PIXEL_PRESENT;
+      if (mosaic) {
+        val |= OBJ_PIXEL_MOSAIC;
+      }
+      line_buffer[x] = val;
     }
   }
 }
 
-static void render_obj_aff(Ppu *ppu, ObjAttr *obj) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+static void render_obj_aff(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
+  u8 *tile_base = ppu->vram + 0x10000;
+
   int screen_y = ppu->LCD.vcount;
 
   u16 attr0 = obj->attr[0];
@@ -187,8 +196,8 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj) {
 
   int sprite_y = screen_y - obj_y;
   if (mosaic) {
-    int mosaic_size = ppu->LCD.mosaic.obj_v + 1;
-    sprite_y -= sprite_y % mosaic_size;
+    int mos_v = ppu->LCD.mosaic.obj_v + 1;
+    sprite_y -= sprite_y % mos_v;
   }
 
   int dy = sprite_y - draw_center_y;
@@ -204,12 +213,8 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj) {
     }
   }
 
-  for (int screen_x = left; screen_x < right; screen_x++) {
-    int sprite_x = screen_x - obj_x;
-    if (mosaic) {
-      int mosaic_size = ppu->LCD.mosaic.obj_h + 1;
-      sprite_x -= sprite_x % mosaic_size;
-    }
+  for (int x = left; x < right; x++) {
+    int sprite_x = x - obj_x;
 
     int dx = sprite_x - draw_center_x;
 
@@ -230,26 +235,33 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj) {
 
     int curr_tile = tile_start + (1 + color_mode) * tile_x;
 
-    int tile_addr = 0x10000 + ((curr_tile % 1024) * 32);
+    int tile_addr = ((curr_tile % 1024) * 32);
 
-    int idx;
+    int color_idx;
     if (color_mode) {
       tile_addr += (subtile_y * 8) + subtile_x;
-      idx = ppu->vram[tile_addr];
+      color_idx = tile_base[tile_addr];
     } else {
       tile_addr += (subtile_y * 4) + (subtile_x / 2);
-      idx = ppu->vram[tile_addr];
+      color_idx = tile_base[tile_addr];
       if (subtile_x & 1) {
-        idx >>= 4;
+        color_idx >>= 4;
       } else {
-        idx &= 0xF;
+        color_idx &= 0xF;
       }
     }
 
-    if (idx != 0) {
+    if (color_idx != 0) {
       u16 color =
-          ((u16 *)ppu->palram)[0x100 + idx + (!color_mode * (pal_bank * 16))];
-      dest[screen_x] = rgb15_to_argb(color);
+          ((u16 *)ppu
+               ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
+      u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
+
+      val |= OBJ_PIXEL_PRESENT;
+      if (mosaic) {
+        val |= OBJ_PIXEL_MOSAIC;
+      }
+      line_buffer[x] = val;
     }
   }
 }
@@ -260,6 +272,9 @@ static void render_objs(Ppu *ppu, int prio) {
   }
 
   ObjAttr *oam = (ObjAttr *)ppu->oam;
+
+  u32 line_buffer[PIXELS_WIDTH];
+  memset(line_buffer, 0, sizeof(line_buffer));
 
   for (int i = 127; i >= 0; i--) {
     ObjAttr *obj = &oam[i];
@@ -274,14 +289,33 @@ static void render_objs(Ppu *ppu, int prio) {
 
     switch (mode) {
     case OBJMODE_HIDE:
-      continue;
+      break;
     case OBJMODE_REG:
-      render_obj_reg(ppu, obj);
+      render_obj_reg(ppu, obj, line_buffer);
       break;
     case OBJMODE_AFF:
     case OBJMODE_AFFDBL:
-      render_obj_aff(ppu, obj);
+      render_obj_aff(ppu, obj, line_buffer);
       break;
+    }
+
+    int mos_h = ppu->LCD.mosaic.obj_h + 1;
+
+    if (mos_h > 1) {
+      for (int x = 0; x < PIXELS_WIDTH; x++) {
+        u32 pixel = line_buffer[x];
+        if ((pixel & OBJ_PIXEL_PRESENT) && (pixel & OBJ_PIXEL_MOSAIC)) {
+          line_buffer[x] = line_buffer[x - (x % mos_h)];
+        }
+      }
+    }
+
+    u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+    for (int x = 0; x < PIXELS_WIDTH; x++) {
+      u32 pixel = line_buffer[x];
+      if (pixel & OBJ_PIXEL_PRESENT) {
+        dest[x] = 0xFF000000 | (pixel & OBJ_COLOR_MASK);
+      }
     }
   }
 }
@@ -293,74 +327,157 @@ static void render_bg_reg(Ppu *ppu, int i, int prio) {
 
   u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
-  int char_base = ppu->LCD.bgcnt[i].char_base_block * 0x4000;
-  u16 *screen_block =
+  u16 *map_base =
       (u16 *)(ppu->vram + (ppu->LCD.bgcnt[i].screen_base_block * 0x800));
+  int tile_base = ppu->LCD.bgcnt[i].char_base_block * 0x4000;
+
   int size = ppu->LCD.bgcnt[i].screen_size;
   int width = (size & 1) ? 512 : 256;
   int height = (size & 2) ? 512 : 256;
   int color_mode = ppu->LCD.bgcnt[i].colors;
 
+  int mosaic = ppu->LCD.bgcnt[i].mosaic;
+
   int screen_y = ppu->LCD.vcount;
-  if (ppu->LCD.bgcnt[i].mosaic) {
-    int mosaic_size = ppu->LCD.mosaic.bg_v + 1;
-    screen_y -= screen_y % mosaic_size;
+  if (mosaic) {
+    int mos_v = ppu->LCD.mosaic.bg_v + 1;
+    screen_y -= screen_y % mos_v;
   }
   int map_y = (screen_y + ppu->LCD.bgvofs[i]) % height;
   int block_y = map_y >> 8;
   int tile_y = (map_y & 255) >> 3;
+  int subtile_y = map_y % 8;
+
+  int mos_h = ppu->LCD.mosaic.bg_h + 1;
 
   for (int x = 0; x < PIXELS_WIDTH; x++) {
     int screen_x = x;
-    if (ppu->LCD.bgcnt[i].mosaic) {
-      int mosaic_size = ppu->LCD.mosaic.bg_h + 1;
-      screen_x -= screen_x % mosaic_size;
+    if (mosaic) {
+      screen_x -= screen_x % mos_h;
     }
-    int map_x = (screen_x + ppu->LCD.bghofs[i]) & (width - 1);
+    int map_x = (screen_x + ppu->LCD.bghofs[i]) % width;
     int block_x = map_x >> 8;
     int tile_x = (map_x & 255) >> 3;
+    int subtile_x = map_x % 8;
 
-    u16 entry = screen_block[(block_y * (width >> 8) + block_x) * 1024 +
-                             tile_y * 32 + tile_x];
+    u16 entry = map_base[(block_y * (width >> 8) + block_x) * 1024 +
+                         tile_y * 32 + tile_x];
 
     int tile_idx = GET_BITS(entry, 0, 10);
     bool hf = TEST_BIT(entry, 10);
     bool vf = TEST_BIT(entry, 11);
     int pal_bank = GET_BITS(entry, 12, 4);
 
-    int u = map_x & 7;
-    int v = map_y & 7;
-
     if (hf) {
-      u = 7 - u;
+      subtile_x = 7 - subtile_x;
     }
     if (vf) {
-      v = 7 - v;
+      subtile_y = 7 - subtile_y;
     }
 
-    int idx;
+    int color_idx;
     if (color_mode) {
-      int tile_addr = char_base + tile_idx * 64 + v * 8 + u;
+      int tile_addr = tile_base + tile_idx * 64 + subtile_y * 8 + subtile_x;
       if (tile_addr >= 0x10000) {
         continue;
       }
-      idx = ppu->vram[tile_addr];
+      color_idx = ppu->vram[tile_addr];
     } else {
-      int tile_addr = char_base + tile_idx * 32 + v * 4 + u / 2;
+      int tile_addr = tile_base + tile_idx * 32 + subtile_y * 4 + subtile_x / 2;
       if (tile_addr >= 0x10000) {
         continue;
       }
-      idx = ppu->vram[tile_addr];
-      if (u % 2) {
-        idx >>= 4;
+      color_idx = ppu->vram[tile_addr];
+      if (subtile_x % 2) {
+        color_idx >>= 4;
       }
-      idx &= 0x0F;
+      color_idx &= 0x0F;
     }
 
-    if (idx != 0) {
-      u16 color = ((u16 *)ppu->palram)[idx + (!color_mode * (pal_bank * 16))];
+    if (color_idx != 0) {
+      u16 color =
+          ((u16 *)ppu->palram)[color_idx + (!color_mode * (pal_bank * 16))];
       dest[x] = rgb15_to_argb(color);
     }
+  }
+}
+
+static void render_bg_aff(Ppu *ppu, int i, int prio) {
+  if (!ppu->LCD.dispcnt.enable[i] || (ppu->LCD.bgcnt[i].priority != prio)) {
+    return;
+  }
+
+  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+
+  u8 *map_base = (ppu->vram + (ppu->LCD.bgcnt[i].screen_base_block * 0x800));
+  int tile_base = ppu->LCD.bgcnt[i].char_base_block * 0x4000;
+
+  int size = ppu->LCD.bgcnt[i].screen_size;
+  int shift = size + 7;
+  int width = 1 << shift;
+  int height = 1 << shift;
+
+  int wrap = ppu->LCD.bgcnt[i].display_area_overflow;
+  int mosaic = ppu->LCD.bgcnt[i].mosaic;
+
+  int screen_y = ppu->LCD.vcount;
+  if (mosaic) {
+    int mos_v = ppu->LCD.mosaic.bg_v + 1;
+    screen_y -= screen_y % mos_v;
+  }
+
+  int pa = ppu->LCD.bgpa[i - 2];
+  int pc = ppu->LCD.bgpc[i - 2];
+  int cx = ppu->LCD.bgx[i - 2].internal;
+  int cy = ppu->LCD.bgy[i - 2].internal;
+
+  u32 latched_color = 0;
+
+  int mos_h = ppu->LCD.mosaic.bg_h + 1;
+
+  for (int x = 0; x < PIXELS_WIDTH; x++) {
+
+    if (mosaic && (x % mos_h) != 0) {
+      if (latched_color != 0) {
+        dest[x] = latched_color;
+      }
+      cx += pa;
+      cy += pc;
+      continue;
+    }
+
+    int tex_x = cx >> 8;
+    int tex_y = cy >> 8;
+
+    if (wrap) {
+      tex_x &= width - 1;
+      tex_y &= height - 1;
+    }
+    if (tex_x < 0 || tex_x >= width || tex_y < 0 || tex_y >= height) {
+      cx += pa;
+      cy += pc;
+      latched_color = 0;
+      continue;
+    }
+
+    int tile_x = tex_x / 8;
+    int tile_y = tex_y / 8;
+    int subtile_x = tex_x % 8;
+    int subtile_y = tex_y % 8;
+
+    u8 tile_idx = map_base[(tile_y * (width / 8) + tile_x)];
+    int tile_addr = tile_base + tile_idx * 64 + subtile_y * 8 + subtile_x;
+    int color_idx = ppu->vram[tile_addr];
+
+    if (color_idx != 0) {
+      u16 color = ((u16 *)ppu->palram)[color_idx];
+      dest[x] = rgb15_to_argb(color);
+      latched_color = dest[x];
+    } else {
+      latched_color = 0;
+    }
+    cx += pa;
+    cy += pc;
   }
 }
 
@@ -393,7 +510,8 @@ static void render_mode1(Ppu *ppu) {
   }
 
   for (int prio = 3; prio >= 0; prio--) {
-    for (int i = 3; i >= 0; i--) {
+    render_bg_aff(ppu, 2, prio);
+    for (int i = 1; i >= 0; i--) {
       render_bg_reg(ppu, i, prio);
     }
     render_objs(ppu, prio);
@@ -411,8 +529,8 @@ static void render_mode2(Ppu *ppu) {
   }
 
   for (int prio = 3; prio >= 0; prio--) {
-    for (int i = 3; i >= 0; i--) {
-      render_bg_reg(ppu, i, prio);
+    for (int i = 3; i >= 2; i--) {
+      render_bg_aff(ppu, i, prio);
     }
     render_objs(ppu, prio);
   }
@@ -507,6 +625,18 @@ void ppu_step(Gba *gba, int cycles) {
 
     if (ppu->LCD.vcount < VISIBLE_SCANLINES) {
       render_scanline(ppu);
+
+      ppu->LCD.bgx[0].internal += ppu->LCD.bgpb[0];
+      ppu->LCD.bgy[0].internal += ppu->LCD.bgpd[0];
+      ppu->LCD.bgx[1].internal += ppu->LCD.bgpb[1];
+      ppu->LCD.bgy[1].internal += ppu->LCD.bgpd[1];
+    } else {
+      if (ppu->LCD.vcount == VISIBLE_SCANLINES) {
+        ppu->LCD.bgx[0].internal = ppu->LCD.bgx[0].current;
+        ppu->LCD.bgy[0].internal = ppu->LCD.bgy[0].current;
+        ppu->LCD.bgx[1].internal = ppu->LCD.bgx[1].current;
+        ppu->LCD.bgy[1].internal = ppu->LCD.bgy[1].current;
+      }
     }
 
     ppu->LCD.vcount++;
