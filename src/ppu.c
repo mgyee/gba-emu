@@ -11,7 +11,7 @@
 
 // Line Buffer Flags
 #define OBJ_PIXEL_PRESENT 0x80000000
-#define OBJ_PIXEL_MOSAIC 0x40000000 // Mosaic enabled for this pixel
+#define OBJ_PIXEL_MOSAIC 0x40000000
 #define OBJ_COLOR_MASK 0x00FFFFFF
 
 // [Shape][Size] -> {Width, Height}
@@ -132,10 +132,11 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
                ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
       u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
       val |= OBJ_PIXEL_PRESENT;
-      if (mosaic) {
-        val |= OBJ_PIXEL_MOSAIC;
-      }
       line_buffer[x] = val;
+    }
+
+    if (mosaic) {
+      line_buffer[x] |= OBJ_PIXEL_MOSAIC;
     }
   }
 }
@@ -258,10 +259,11 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
       u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
 
       val |= OBJ_PIXEL_PRESENT;
-      if (mosaic) {
-        val |= OBJ_PIXEL_MOSAIC;
-      }
       line_buffer[x] = val;
+    }
+
+    if (mosaic) {
+      line_buffer[x] |= OBJ_PIXEL_MOSAIC;
     }
   }
 }
@@ -289,7 +291,7 @@ static void render_objs(Ppu *ppu, int prio) {
 
     switch (mode) {
     case OBJMODE_HIDE:
-      break;
+      continue;
     case OBJMODE_REG:
       render_obj_reg(ppu, obj, line_buffer);
       break;
@@ -304,7 +306,7 @@ static void render_objs(Ppu *ppu, int prio) {
     if (mos_h > 1) {
       for (int x = 0; x < PIXELS_WIDTH; x++) {
         u32 pixel = line_buffer[x];
-        if ((pixel & OBJ_PIXEL_PRESENT) && (pixel & OBJ_PIXEL_MOSAIC)) {
+        if (pixel & OBJ_PIXEL_MOSAIC) {
           line_buffer[x] = line_buffer[x - (x % mos_h)];
         }
       }
