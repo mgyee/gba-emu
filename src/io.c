@@ -1,6 +1,7 @@
 #include "io.h"
 #include "bus.h"
 #include "gba.h"
+#include "ppu.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -534,7 +535,7 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     break;
   case BLDCNT:
     ppu->LCD.blendcnt.val = (ppu->LCD.blendcnt.val & 0xFF00) | val;
-    ppu->LCD.blendcnt.effect = val & 0x3;
+    ppu->LCD.blendcnt.effect = (val >> 6) & 0x3;
     for (int i = 0; i < 6; i++) {
       ppu->LCD.blendcnt.targets[0][i] = (val >> i) & 1;
     }

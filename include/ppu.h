@@ -4,6 +4,20 @@
 #define PIXELS_WIDTH 240
 #define PIXELS_HEIGHT 160
 
+#define TRANSPARENT 0x8000
+#define WHITE 0x7FFF
+#define BLACK 0x0000
+
+#define OBJ_IDX 4
+#define BACKDROP_IDX 5
+
+typedef enum {
+  BLEND_NONE,
+  BLEND_ALPHA,
+  BLEND_BRIGHTEN,
+  BLEND_DARKEN,
+} Effect;
+
 struct Ppu {
   u32 framebuffer[PIXELS_WIDTH * PIXELS_HEIGHT];
   int cycle;
@@ -55,6 +69,7 @@ struct Ppu {
       s32 current;
       s32 internal;
     } bgx[2], bgy[2];
+
     u16 winh[2];
     u16 winv[2];
 
@@ -72,13 +87,8 @@ struct Ppu {
     } mosaic;
 
     struct {
-      enum Effect {
-        BLEND_NONE,
-        BLEND_ALPHA,
-        BLEND_BRIGHTEN,
-        BLEND_DARKEN,
-      } effect;
       u16 val;
+      Effect effect;
       int targets[2][6];
       int color_special_effect;
     } blendcnt;
@@ -111,6 +121,19 @@ typedef struct {
   u16 fill3[3];
   s16 pd;
 } ObjAffine;
+
+typedef struct {
+  u16 color;
+  int prio;
+  bool mosaic;
+  bool blend;
+} ObjBufferEntry;
+
+typedef struct {
+  u16 color;
+  int idx;
+  int prio;
+} Layer;
 
 typedef enum { OBJMODE_REG, OBJMODE_AFF, OBJMODE_HIDE, OBJMODE_AFFDBL } ObjMode;
 

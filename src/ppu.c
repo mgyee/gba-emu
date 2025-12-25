@@ -9,11 +9,6 @@
 #define H_VISIBLE_CYCLES 960
 #define H_BLANK_CYCLES 272
 
-// Line Buffer Flags
-#define OBJ_PIXEL_PRESENT 0x80000000
-#define OBJ_PIXEL_MOSAIC 0x40000000
-#define OBJ_COLOR_MASK 0x00FFFFFF
-
 // [Shape][Size] -> {Width, Height}
 static const int sizes[3][4][2] = {{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
                                    {{16, 8}, {32, 8}, {32, 16}, {64, 32}},
@@ -31,7 +26,8 @@ static inline u32 rgb15_to_argb(u16 color) {
   return 0xFF000000 | (r << 16) | (g << 8) | b;
 }
 
-static void render_obj_reg(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
+static void render_obj_reg(Ppu *ppu, ObjAttr *obj,
+                           ObjBufferEntry buffer[PIXELS_WIDTH]) {
   u8 *tile_base = ppu->vram + 0x10000;
 
   int screen_y = ppu->LCD.vcount;
@@ -67,11 +63,13 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
     return;
   }
 
+  int gfx_mode = GET_BITS(attr0, 10, 2);
   int mosaic = TEST_BIT(attr0, 12);
   int color_mode = TEST_BIT(attr0, 13);
   int hf = TEST_BIT(attr1, 12);
   int vf = TEST_BIT(attr1, 13);
   int tile_idx = GET_BITS(attr2, 0, 10);
+  int prio = GET_BITS(attr2, 10, 2);
   int pal_bank = GET_BITS(attr2, 12, 4);
 
   int sprite_y = screen_y - obj_y;
@@ -130,18 +128,17 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
       u16 color =
           ((u16 *)ppu
                ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
-      u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
-      val |= OBJ_PIXEL_PRESENT;
-      line_buffer[x] = val;
+      buffer[x].color = color;
+      buffer[x].prio = prio;
+      buffer[x].blend = gfx_mode == GFXMODE_BLEND;
     }
 
-    if (mosaic) {
-      line_buffer[x] |= OBJ_PIXEL_MOSAIC;
-    }
+    buffer[x].mosaic = mosaic;
   }
 }
 
-static void render_obj_aff(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
+static void render_obj_aff(Ppu *ppu, ObjAttr *obj,
+                           ObjBufferEntry buffer[PIXELS_WIDTH]) {
   u8 *tile_base = ppu->vram + 0x10000;
 
   int screen_y = ppu->LCD.vcount;
@@ -186,10 +183,12 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
     return;
   }
 
+  int gfx_mode = GET_BITS(attr0, 10, 2);
   int mosaic = TEST_BIT(attr0, 12);
   int color_mode = TEST_BIT(attr0, 13);
   int aff_idx = GET_BITS(attr1, 9, 5);
   int tile_idx = GET_BITS(attr2, 0, 10);
+  int prio = GET_BITS(attr2, 10, 2);
   int pal_bank = GET_BITS(attr2, 12, 4);
 
   ObjAffine *oam = (ObjAffine *)ppu->oam;
@@ -256,78 +255,65 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj, u32 *line_buffer) {
       u16 color =
           ((u16 *)ppu
                ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
-      u32 val = rgb15_to_argb(color) & OBJ_COLOR_MASK;
 
-      val |= OBJ_PIXEL_PRESENT;
-      line_buffer[x] = val;
+      buffer[x].color = color;
+      buffer[x].prio = prio;
+      buffer[x].blend = gfx_mode == GFXMODE_BLEND;
     }
 
-    if (mosaic) {
-      line_buffer[x] |= OBJ_PIXEL_MOSAIC;
-    }
+    buffer[x].mosaic = mosaic;
   }
 }
 
-static void render_objs(Ppu *ppu, int prio) {
+static void render_objs(Ppu *ppu, ObjBufferEntry buffer[PIXELS_WIDTH]) {
   if (!ppu->LCD.dispcnt.enable[4]) {
     return;
   }
 
   ObjAttr *oam = (ObjAttr *)ppu->oam;
 
-  u32 line_buffer[PIXELS_WIDTH];
-  memset(line_buffer, 0, sizeof(line_buffer));
+  for (int prio = 3; prio >= 0; prio--) {
+    for (int i = 127; i >= 0; i--) {
+      ObjAttr *obj = &oam[i];
+      int obj_prio = GET_BITS(obj->attr[2], 10, 2);
+      int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
 
-  for (int i = 127; i >= 0; i--) {
-    ObjAttr *obj = &oam[i];
-    int obj_prio = GET_BITS(obj->attr[2], 10, 2);
-    int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
-
-    if (obj_prio != prio || gfx_mode == GFXMODE_FORBIDDEN) {
-      continue;
-    }
-
-    ObjMode mode = GET_BITS(obj->attr[0], 8, 2);
-
-    switch (mode) {
-    case OBJMODE_HIDE:
-      continue;
-    case OBJMODE_REG:
-      render_obj_reg(ppu, obj, line_buffer);
-      break;
-    case OBJMODE_AFF:
-    case OBJMODE_AFFDBL:
-      render_obj_aff(ppu, obj, line_buffer);
-      break;
-    }
-
-    int mos_h = ppu->LCD.mosaic.obj_h + 1;
-
-    if (mos_h > 1) {
-      for (int x = 0; x < PIXELS_WIDTH; x++) {
-        u32 pixel = line_buffer[x];
-        if (pixel & OBJ_PIXEL_MOSAIC) {
-          line_buffer[x] = line_buffer[x - (x % mos_h)];
-        }
+      if (obj_prio != prio || gfx_mode == GFXMODE_FORBIDDEN) {
+        continue;
       }
-    }
 
-    u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-    for (int x = 0; x < PIXELS_WIDTH; x++) {
-      u32 pixel = line_buffer[x];
-      if (pixel & OBJ_PIXEL_PRESENT) {
-        dest[x] = 0xFF000000 | (pixel & OBJ_COLOR_MASK);
+      ObjMode mode = GET_BITS(obj->attr[0], 8, 2);
+
+      switch (mode) {
+      case OBJMODE_HIDE:
+        continue;
+      case OBJMODE_REG:
+        render_obj_reg(ppu, obj, buffer);
+        break;
+      case OBJMODE_AFF:
+      case OBJMODE_AFFDBL:
+        render_obj_aff(ppu, obj, buffer);
+        break;
+      }
+
+      int mos_h = ppu->LCD.mosaic.obj_h + 1;
+
+      if (mos_h > 1) {
+        for (int x = 0; x < PIXELS_WIDTH; x++) {
+          ObjBufferEntry entry = buffer[x];
+          if (entry.mosaic) {
+            buffer[x].color = buffer[x - (x % mos_h)].color;
+          }
+        }
       }
     }
   }
 }
 
-static void render_bg_reg(Ppu *ppu, int i, int prio) {
-  if (!ppu->LCD.dispcnt.enable[i] || (ppu->LCD.bgcnt[i].priority != prio)) {
+static void render_bg_reg(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
+  if (!ppu->LCD.dispcnt.enable[i]) {
     return;
   }
-
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
   u16 *map_base =
       (u16 *)(ppu->vram + (ppu->LCD.bgcnt[i].screen_base_block * 0x800));
@@ -399,17 +385,15 @@ static void render_bg_reg(Ppu *ppu, int i, int prio) {
     if (color_idx != 0) {
       u16 color =
           ((u16 *)ppu->palram)[color_idx + (!color_mode * (pal_bank * 16))];
-      dest[x] = rgb15_to_argb(color);
+      buffer[x] = color;
     }
   }
 }
 
-static void render_bg_aff(Ppu *ppu, int i, int prio) {
-  if (!ppu->LCD.dispcnt.enable[i] || (ppu->LCD.bgcnt[i].priority != prio)) {
+static void render_bg_aff(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
+  if (!ppu->LCD.dispcnt.enable[i]) {
     return;
   }
-
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
 
   u8 *map_base = (ppu->vram + (ppu->LCD.bgcnt[i].screen_base_block * 0x800));
   int tile_base = ppu->LCD.bgcnt[i].char_base_block * 0x4000;
@@ -433,15 +417,15 @@ static void render_bg_aff(Ppu *ppu, int i, int prio) {
   int cx = ppu->LCD.bgx[i - 2].internal;
   int cy = ppu->LCD.bgy[i - 2].internal;
 
-  u32 latched_color = 0;
+  u32 latched_color = TRANSPARENT;
 
   int mos_h = ppu->LCD.mosaic.bg_h + 1;
 
   for (int x = 0; x < PIXELS_WIDTH; x++) {
 
     if (mosaic && (x % mos_h) != 0) {
-      if (latched_color != 0) {
-        dest[x] = latched_color;
+      if (latched_color != TRANSPARENT) {
+        buffer[x] = latched_color;
       }
       cx += pa;
       cy += pc;
@@ -458,7 +442,7 @@ static void render_bg_aff(Ppu *ppu, int i, int prio) {
     if (tex_x < 0 || tex_x >= width || tex_y < 0 || tex_y >= height) {
       cx += pa;
       cy += pc;
-      latched_color = 0;
+      latched_color = TRANSPARENT;
       continue;
     }
 
@@ -472,116 +456,98 @@ static void render_bg_aff(Ppu *ppu, int i, int prio) {
     int color_idx = ppu->vram[tile_addr];
 
     if (color_idx != 0) {
-      u16 color = ((u16 *)ppu->palram)[color_idx];
-      dest[x] = rgb15_to_argb(color);
-      latched_color = dest[x];
+      latched_color = ((u16 *)ppu->palram)[color_idx];
+      buffer[x] = latched_color;
     } else {
-      latched_color = 0;
+      latched_color = TRANSPARENT;
     }
     cx += pa;
     cy += pc;
   }
 }
 
-static void render_mode0(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-
-  u16 background_color = ((u16 *)ppu->palram)[0];
-  u32 background_argb = rgb15_to_argb(background_color);
-
-  for (int x = 0; x < PIXELS_WIDTH; x++) {
-    dest[x] = background_argb;
-  }
-
-  for (int prio = 3; prio >= 0; prio--) {
-    for (int i = 3; i >= 0; i--) {
-      render_bg_reg(ppu, i, prio);
-    }
-    render_objs(ppu, prio);
+static void render_mode0(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
+  for (int i = 0; i < 4; i++) {
+    render_bg_reg(ppu, i, bg_buffers[i]);
   }
 }
 
-static void render_mode1(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-
-  u16 background_color = ((u16 *)ppu->palram)[0];
-  u32 background_argb = rgb15_to_argb(background_color);
-
-  for (int x = 0; x < PIXELS_WIDTH; x++) {
-    dest[x] = background_argb;
+static void render_mode1(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
+  for (int i = 0; i < 2; i++) {
+    render_bg_reg(ppu, i, bg_buffers[i]);
   }
+  render_bg_aff(ppu, 2, bg_buffers[2]);
+}
 
-  for (int prio = 3; prio >= 0; prio--) {
-    render_bg_aff(ppu, 2, prio);
-    for (int i = 1; i >= 0; i--) {
-      render_bg_reg(ppu, i, prio);
-    }
-    render_objs(ppu, prio);
+static void render_mode2(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
+  for (int i = 2; i < 4; i++) {
+    render_bg_aff(ppu, i, bg_buffers[i]);
   }
 }
 
-static void render_mode2(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-
-  u16 background_color = ((u16 *)ppu->palram)[0];
-  u32 background_argb = rgb15_to_argb(background_color);
-
-  for (int x = 0; x < PIXELS_WIDTH; x++) {
-    dest[x] = background_argb;
-  }
-
-  for (int prio = 3; prio >= 0; prio--) {
-    for (int i = 3; i >= 2; i--) {
-      render_bg_aff(ppu, i, prio);
-    }
-    render_objs(ppu, prio);
-  }
-}
-
-static void render_mode3(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+static void render_mode3(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
   u16 *vram_ptr = (u16 *)ppu->vram + (ppu->LCD.vcount * PIXELS_WIDTH);
+  u16 *buffer = bg_buffers[2];
 
-  for (int x = 0; x < PIXELS_WIDTH; x++) {
-    u16 color = vram_ptr[x];
-    dest[x] = rgb15_to_argb(color);
+  if (ppu->LCD.dispcnt.enable[2]) {
+    for (int x = 0; x < PIXELS_WIDTH; x++) {
+      buffer[x] = vram_ptr[x];
+    }
   }
 }
 
-static void render_mode4(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+static void render_mode4(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
   u8 *vram_ptr = ppu->vram + (ppu->LCD.dispcnt.frame * 0xA000) +
                  (ppu->LCD.vcount * PIXELS_WIDTH);
+  u16 *buffer = bg_buffers[2];
 
-  for (int x = 0; x < PIXELS_WIDTH; x++) {
-    u8 idx = vram_ptr[x];
-    u16 color = ((u16 *)ppu->palram)[idx];
-    dest[x] = rgb15_to_argb(color);
+  if (ppu->LCD.dispcnt.enable[2]) {
+    for (int x = 0; x < PIXELS_WIDTH; x++) {
+      u8 idx = vram_ptr[x];
+      buffer[x] = ((u16 *)ppu->palram)[idx];
+    }
   }
 }
 
-static void render_mode5(Ppu *ppu) {
-  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
-  if (ppu->LCD.vcount >= 128) {
-    for (int x = 0; x < PIXELS_WIDTH; x++) {
-      dest[x] = 0xFFFF00FF;
-    }
-    return;
-  }
+static void render_mode5(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
   u16 *vram_ptr = (u16 *)(ppu->vram + (ppu->LCD.dispcnt.frame * 0xA000)) +
                   (ppu->LCD.vcount * PIXELS_HEIGHT);
+  u16 *buffer = bg_buffers[2];
 
-  for (int x = 0; x < PIXELS_HEIGHT; x++) {
-    u16 color = vram_ptr[x];
-    dest[x] = rgb15_to_argb(color);
-  }
+  if (ppu->LCD.dispcnt.enable[2]) {
+    if (ppu->LCD.vcount >= 128) {
+      for (int x = 0; x < PIXELS_WIDTH; x++) {
+        buffer[x] = 0x7C1F;
+      }
+      return;
+    }
+    for (int x = 0; x < PIXELS_HEIGHT; x++) {
+      buffer[x] = vram_ptr[x];
+    }
 
-  for (int x = PIXELS_HEIGHT; x < PIXELS_WIDTH; x++) {
-    dest[x] = 0xFFFF00FF;
+    for (int x = PIXELS_HEIGHT; x < PIXELS_WIDTH; x++) {
+      buffer[x] = 0x7C1F;
+    }
   }
 }
 
 void ppu_init(Ppu *ppu) { memset(ppu, 0, sizeof(Ppu)); }
+
+static u16 blend(u16 color_a, u16 color_b, int weight_a, int weight_b) {
+  int r_a = (color_a & 0x1F);
+  int g_a = (color_a >> 5) & 0x1F;
+  int b_a = (color_a >> 10) & 0x1F;
+
+  int r_b = (color_b & 0x1F);
+  int g_b = (color_b >> 5) & 0x1F;
+  int b_b = (color_b >> 10) & 0x1F;
+
+  int r = MIN(31, ((r_a * weight_a) >> 4) + ((r_b * weight_b) >> 4));
+  int g = MIN(31, ((g_a * weight_a) >> 4) + ((g_b * weight_b) >> 4));
+  int b = MIN(31, ((b_a * weight_a) >> 4) + ((b_b * weight_b) >> 4));
+
+  return r | g << 5 | b << 10;
+}
 
 static void render_scanline(Ppu *ppu) {
   if (ppu->LCD.dispcnt.forced_blank) {
@@ -591,27 +557,124 @@ static void render_scanline(Ppu *ppu) {
     return;
   }
 
+  ObjBufferEntry obj_buffer[PIXELS_WIDTH];
+
+  u16 bg_buffers[4][PIXELS_WIDTH];
+
+  for (int i = 0; i < PIXELS_WIDTH; i++) {
+    obj_buffer[i].color = TRANSPARENT;
+    bg_buffers[0][i] = TRANSPARENT;
+    bg_buffers[1][i] = TRANSPARENT;
+    bg_buffers[2][i] = TRANSPARENT;
+    bg_buffers[3][i] = TRANSPARENT;
+  }
+
+  render_objs(ppu, obj_buffer);
+
   switch (ppu->LCD.dispcnt.mode) {
   case 0:
-    render_mode0(ppu);
+    render_mode0(ppu, bg_buffers);
     break;
   case 1:
-    render_mode1(ppu);
+    render_mode1(ppu, bg_buffers);
     break;
   case 2:
-    render_mode2(ppu);
+    render_mode2(ppu, bg_buffers);
     break;
   case 3:
-    render_mode3(ppu);
+    render_mode3(ppu, bg_buffers);
     break;
   case 4:
-    render_mode4(ppu);
+    render_mode4(ppu, bg_buffers);
     break;
   case 5:
-    render_mode5(ppu);
+    render_mode5(ppu, bg_buffers);
     break;
   default:
     break;
+  }
+
+  u32 *dest = ppu->framebuffer + (ppu->LCD.vcount * PIXELS_WIDTH);
+
+  u16 backdrop_color = ((u16 *)ppu->palram)[0] & 0x7FFF;
+  Layer backdrop = (Layer){backdrop_color, BACKDROP_IDX, 4};
+
+  int order[4];
+
+  int order_idx = 0;
+  for (int prio = 0; prio < 4; prio++) {
+    for (int i = 0; i < 4; i++) {
+      if (ppu->LCD.bgcnt[i].priority == prio) {
+        order[order_idx++] = i;
+      }
+    }
+  }
+
+  for (int x = 0; x < PIXELS_WIDTH; x++) {
+    Layer top = backdrop;
+    Layer bot = backdrop;
+    bool first = true;
+    for (int prio = 0; prio < 4; prio++) {
+      int bg_idx = order[prio];
+      u16 color = bg_buffers[bg_idx][x];
+      if (color != TRANSPARENT) {
+        if (first) {
+          top = (Layer){color, bg_idx, prio};
+          first = false;
+        } else {
+          bot = (Layer){color, bg_idx, prio};
+          break;
+        }
+      }
+    }
+
+    ObjBufferEntry entry = obj_buffer[x];
+    if (entry.color != TRANSPARENT) {
+      Layer obj_layer = (Layer){entry.color, OBJ_IDX, entry.prio};
+      if (entry.prio <= top.prio) {
+        bot = top;
+        top = obj_layer;
+      } else if (entry.prio <= bot.prio) {
+        bot = obj_layer;
+      }
+    }
+
+    bool blend_obj = (top.idx == OBJ_IDX) && obj_buffer[x].blend;
+
+    bool blend_top = ppu->LCD.blendcnt.targets[0][top.idx];
+    bool blend_bot = ppu->LCD.blendcnt.targets[1][bot.idx];
+
+    Effect effect = ppu->LCD.blendcnt.effect;
+
+    if (blend_obj && blend_bot) {
+      effect = BLEND_ALPHA;
+    }
+
+    u16 color = top.color;
+
+    int fade = MIN(16, ppu->LCD.evy);
+
+    if (blend_obj || blend_top) {
+      switch (effect) {
+      case BLEND_ALPHA:
+        if (blend_bot) {
+          color = blend(top.color, bot.color, ppu->LCD.eva, ppu->LCD.evb);
+        }
+        break;
+      case BLEND_BRIGHTEN: {
+        color = blend(top.color, WHITE, 16 - fade, fade);
+        break;
+      }
+      case BLEND_DARKEN: {
+        color = blend(top.color, BLACK, 16 - fade, fade);
+        break;
+      }
+      case BLEND_NONE:
+        break;
+      }
+    }
+
+    dest[x] = rgb15_to_argb(color);
   }
 }
 
