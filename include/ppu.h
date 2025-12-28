@@ -10,6 +10,7 @@
 
 #define OBJ_IDX 4
 #define BACKDROP_IDX 5
+#define WIN_BLD_IDX 5
 
 typedef enum {
   BLEND_NONE,
@@ -75,8 +76,15 @@ struct Ppu {
 
     struct {
       u16 val;
-      int enable[2][6];
-    } winin, winout;
+      int win0[6];
+      int win1[6];
+    } winin;
+
+    struct {
+      u16 val;
+      int win_out[6];
+      int win_obj[6];
+    } winout;
 
     struct {
       u16 val;
@@ -96,7 +104,7 @@ struct Ppu {
     int eva;
     int evb;
     int evy;
-  } LCD;
+  } Lcd;
 };
 
 typedef enum {
@@ -127,6 +135,7 @@ typedef struct {
   int prio;
   bool mosaic;
   bool blend;
+  bool window;
 } ObjBufferEntry;
 
 typedef struct {
