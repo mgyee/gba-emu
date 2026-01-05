@@ -551,6 +551,14 @@ static u16 blend(u16 color_a, u16 color_b, int weight_a, int weight_b) {
   return r | g << 5 | b << 10;
 }
 
+static bool in_win(int v, int left, int right) {
+  if (left < right) {
+    return v >= left && v < right;
+  } else {
+    return v >= left || v < right;
+  }
+}
+
 static void render_scanline(Ppu *ppu) {
   int y = ppu->Lcd.vcount;
   if (ppu->Lcd.dispcnt.forced_blank) {
@@ -627,8 +635,8 @@ static void render_scanline(Ppu *ppu) {
   int win1_bot = GET_BITS(ppu->Lcd.winv[1], 0, 8);
   int win1_top = GET_BITS(ppu->Lcd.winv[1], 8, 8);
 
-  bool win0_v = y >= win0_top && y < win0_bot;
-  bool win1_v = y >= win1_top && y < win1_bot;
+  bool win0_v = in_win(y, win0_top, win0_bot);
+  bool win1_v = in_win(y, win1_top, win1_bot);
 
   for (int x = 0; x < PIXELS_WIDTH; x++) {
     ObjBufferEntry entry = obj_buffer[x];
@@ -638,9 +646,9 @@ static void render_scanline(Ppu *ppu) {
     int *window = windows_disabled;
 
     if (windows_active) {
-      if (win0_enable && x >= win0_left && x < win0_right && win0_v) {
+      if (win0_enable && win0_v && in_win(x, win0_left, win0_right)) {
         window = ppu->Lcd.winin.win0;
-      } else if (win1_enable && x >= win1_left && x < win1_right && win1_v) {
+      } else if (win1_enable && win1_v && in_win(x, win1_left, win1_right)) {
         window = ppu->Lcd.winin.win1;
       } else if (obj_enable && entry.window) {
         window = ppu->Lcd.winout.win_obj;
