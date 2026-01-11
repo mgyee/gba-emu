@@ -28,7 +28,7 @@ typedef struct Keypad Keypad;
 #define FRAME_TIME_MS (1000.0 / 59.73)
 
 #define BIT(n) (1U << (n))
-#define TEST_BIT(val, n) ((val) & BIT(n))
+#define TEST_BIT(val, bit) (((val) >> (bit)) & 1)
 #define GET_BITS(val, pos, len) (((val) >> (pos)) & ((1U << (len)) - 1))
 
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))

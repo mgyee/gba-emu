@@ -667,9 +667,6 @@ static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
   if (opcode != ALU_TST && opcode != ALU_TEQ && opcode != ALU_CMP &&
       opcode != ALU_CMN) {
     REG(rd) = res;
-    if (r15_dst) {
-      arm_fetch(gba);
-    }
   }
 
   if (s) {
@@ -682,6 +679,16 @@ static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
       u32 spsr = SPSR;
       cpu_set_mode(cpu, SPSR & 0x1F);
       CPSR = spsr;
+    }
+  }
+
+  if (r15_dst && (opcode != ALU_TST && opcode != ALU_TEQ && opcode != ALU_CMP &&
+                  opcode != ALU_CMN)) {
+
+    if (CPSR & CPSR_T) {
+      thumb_fetch(gba);
+    } else {
+      arm_fetch(gba);
     }
   }
 }

@@ -36,7 +36,7 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj,
   u16 attr1 = obj->attr[1];
   u16 attr2 = obj->attr[2];
 
-  int disable = TEST_BIT(attr0, 9);
+  bool disable = TEST_BIT(attr0, 9);
   if (disable) {
     return;
   }
@@ -64,10 +64,10 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj,
   }
 
   int gfx_mode = GET_BITS(attr0, 10, 2);
-  int mosaic = TEST_BIT(attr0, 12);
-  int color_mode = TEST_BIT(attr0, 13);
-  int hf = TEST_BIT(attr1, 12);
-  int vf = TEST_BIT(attr1, 13);
+  bool mosaic = TEST_BIT(attr0, 12);
+  bool color_mode = TEST_BIT(attr0, 13);
+  bool hf = TEST_BIT(attr1, 12);
+  bool vf = TEST_BIT(attr1, 13);
   int tile_idx = GET_BITS(attr2, 0, 10);
   int prio = GET_BITS(attr2, 10, 2);
   int pal_bank = GET_BITS(attr2, 12, 4);
@@ -185,8 +185,8 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj,
   }
 
   int gfx_mode = GET_BITS(attr0, 10, 2);
-  int mosaic = TEST_BIT(attr0, 12);
-  int color_mode = TEST_BIT(attr0, 13);
+  bool mosaic = TEST_BIT(attr0, 12);
+  bool color_mode = TEST_BIT(attr0, 13);
   int aff_idx = GET_BITS(attr1, 9, 5);
   int tile_idx = GET_BITS(attr2, 0, 10);
   int prio = GET_BITS(attr2, 10, 2);
@@ -727,11 +727,80 @@ static void render_scanline(Ppu *ppu) {
   }
 }
 
+// void ppu_step(Gba *gba, int cycles) {
+//   Ppu *ppu = &gba->ppu;
+//   ppu->cycle += cycles;
+//
+//   while (ppu->cycle >= CYCLES_PER_SCANLINE) {
+//     ppu->cycle -= CYCLES_PER_SCANLINE;
+//
+//     ppu->Lcd.dispstat.hblank = 0;
+//     ppu->Lcd.dispstat.val &= ~2;
+//
+//     if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+//       render_scanline(ppu);
+//
+//       ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
+//       ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
+//       ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
+//       ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
+//     } else if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
+//       ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
+//       ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
+//       ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
+//       ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
+//     }
+//
+//     ppu->Lcd.vcount++;
+//
+//     if (ppu->Lcd.vcount >= SCANLINES_PER_FRAME) {
+//       ppu->Lcd.vcount = 0;
+//     }
+//
+//     if (ppu->Lcd.vcount == ppu->Lcd.dispstat.vcount_setting) {
+//       ppu->Lcd.dispstat.vcounter = 1;
+//       ppu->Lcd.dispstat.val |= 4;
+//
+//       if (ppu->Lcd.dispstat.vcounter_irq) {
+//         raise_interrupt(gba, INT_VCOUNT);
+//       }
+//     } else {
+//       ppu->Lcd.dispstat.vcounter = 0;
+//       ppu->Lcd.dispstat.val &= ~4;
+//     }
+//
+//     if (ppu->Lcd.vcount >= VISIBLE_SCANLINES) {
+//       ppu->Lcd.dispstat.vblank = 1;
+//       ppu->Lcd.dispstat.val |= 1;
+//
+//       if (ppu->Lcd.vcount == VISIBLE_SCANLINES &&
+//           ppu->Lcd.dispstat.vblank_irq) {
+//         raise_interrupt(gba, INT_VBLANK);
+//       }
+//     } else if (ppu->Lcd.vcount == 0) {
+//       ppu->Lcd.dispstat.vblank = 0;
+//       ppu->Lcd.dispstat.val &= ~1;
+//     }
+//   }
+// }
+
 void ppu_step(Gba *gba, int cycles) {
   Ppu *ppu = &gba->ppu;
   ppu->cycle += cycles;
 
-  while (ppu->cycle >= CYCLES_PER_SCANLINE) {
+  while (ppu->cycle >= H_VISIBLE_CYCLES) {
+
+    if (!ppu->Lcd.dispstat.hblank) {
+      ppu->Lcd.dispstat.hblank = 1;
+      ppu->Lcd.dispstat.val |= 2;
+
+      if (ppu->Lcd.dispstat.hblank_irq) {
+        raise_interrupt(gba, INT_HBLANK);
+      }
+    }
+    if (ppu->cycle < CYCLES_PER_SCANLINE) {
+      break;
+    }
     ppu->cycle -= CYCLES_PER_SCANLINE;
 
     ppu->Lcd.dispstat.hblank = 0;
@@ -744,13 +813,11 @@ void ppu_step(Gba *gba, int cycles) {
       ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
       ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
       ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
-    } else {
-      if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
-        ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-        ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-        ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-        ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-      }
+    } else if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
+      ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
+      ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
+      ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
+      ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
     }
 
     ppu->Lcd.vcount++;
@@ -771,24 +838,21 @@ void ppu_step(Gba *gba, int cycles) {
       ppu->Lcd.dispstat.val &= ~4;
     }
 
-    if (ppu->Lcd.vcount >= VISIBLE_SCANLINES) {
-      ppu->Lcd.dispstat.val |= 1;
-      ppu->Lcd.dispstat.vblank = 1;
+    if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
 
+      ppu->Lcd.dispstat.vblank = 1;
+      ppu->Lcd.dispstat.val |= 1;
       if (ppu->Lcd.dispstat.vblank_irq) {
         raise_interrupt(gba, INT_VBLANK);
       }
-    } else if (ppu->Lcd.vcount == 0) {
-      ppu->Lcd.dispstat.val &= ~1;
-      ppu->Lcd.dispstat.vblank = 0;
-    }
 
-    if (ppu->cycle >= H_VISIBLE_CYCLES) {
-      ppu->Lcd.dispstat.val |= 2;
-      ppu->Lcd.dispstat.hblank = 1;
-      if (ppu->Lcd.dispstat.hblank_irq) {
-        raise_interrupt(gba, INT_HBLANK);
-      }
+      // ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
+      // ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
+      // ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
+      // ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
+    } else if (ppu->Lcd.vcount == 0) {
+      ppu->Lcd.dispstat.vblank = 0;
+      ppu->Lcd.dispstat.val &= ~1;
     }
   }
 }

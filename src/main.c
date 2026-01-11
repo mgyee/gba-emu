@@ -1,6 +1,8 @@
 #include "common.h"
 #include "cpu.h"
 #include "gba.h"
+#include "interrupt.h"
+#include "io.h"
 #include "keypad.h"
 #include "ppu.h"
 #include <SDL.h>
@@ -37,17 +39,6 @@ int main(int argc, char *argv[]) {
     SDL_Quit();
     return 1;
   }
-
-  // Ppu *ppu = malloc(sizeof(Ppu));
-  // ppu_init(ppu);
-  //
-  // Keypad *keypad = malloc(sizeof(Keypad));
-  // keypad_init(keypad);
-  //
-  // Bus *bus = malloc(sizeof(Bus));
-  // bus_init(bus, ppu, keypad);
-  //
-  // bus_load_bios(bus, "bios.bin");
 
   char *bios_file = "gba_bios.bin";
   if (argc == 3) {
@@ -86,28 +77,28 @@ int main(int argc, char *argv[]) {
         goto shutdown;
       case SDL_KEYDOWN:
         switch (event.key.keysym.sym) {
-        case SDLK_w:
+        case SDLK_UP:
           gba->keypad.keyinput &= ~(1 << BUTTON_UP);
           break;
-        case SDLK_s:
+        case SDLK_DOWN:
           gba->keypad.keyinput &= ~(1 << BUTTON_DOWN);
           break;
-        case SDLK_a:
+        case SDLK_LEFT:
           gba->keypad.keyinput &= ~(1 << BUTTON_LEFT);
           break;
-        case SDLK_d:
+        case SDLK_RIGHT:
           gba->keypad.keyinput &= ~(1 << BUTTON_RIGHT);
           break;
-        case SDLK_j:
+        case SDLK_z:
           gba->keypad.keyinput &= ~(1 << BUTTON_B);
           break;
-        case SDLK_k:
+        case SDLK_x:
           gba->keypad.keyinput &= ~(1 << BUTTON_A);
           break;
-        case SDLK_u:
+        case SDLK_a:
           gba->keypad.keyinput &= ~(1 << BUTTON_L);
           break;
-        case SDLK_i:
+        case SDLK_s:
           gba->keypad.keyinput &= ~(1 << BUTTON_R);
           break;
         case SDLK_RETURN:
@@ -120,28 +111,28 @@ int main(int argc, char *argv[]) {
         break;
       case SDL_KEYUP:
         switch (event.key.keysym.sym) {
-        case SDLK_w:
+        case SDLK_UP:
           gba->keypad.keyinput |= (1 << BUTTON_UP);
           break;
-        case SDLK_s:
+        case SDLK_DOWN:
           gba->keypad.keyinput |= (1 << BUTTON_DOWN);
           break;
-        case SDLK_a:
+        case SDLK_LEFT:
           gba->keypad.keyinput |= (1 << BUTTON_LEFT);
           break;
-        case SDLK_d:
+        case SDLK_RIGHT:
           gba->keypad.keyinput |= (1 << BUTTON_RIGHT);
           break;
-        case SDLK_j:
+        case SDLK_z:
           gba->keypad.keyinput |= (1 << BUTTON_B);
           break;
-        case SDLK_k:
+        case SDLK_x:
           gba->keypad.keyinput |= (1 << BUTTON_A);
           break;
-        case SDLK_u:
+        case SDLK_a:
           gba->keypad.keyinput |= (1 << BUTTON_L);
           break;
-        case SDLK_i:
+        case SDLK_s:
           gba->keypad.keyinput |= (1 << BUTTON_R);
           break;
         case SDLK_RETURN:
@@ -156,13 +147,24 @@ int main(int argc, char *argv[]) {
     }
     int total_cycles = 0;
     while (total_cycles < CYCLES_PER_FRAME) {
-      handle_interrupts(gba);
-      int cycles = cpu_step(gba);
-      total_cycles += cycles;
+
+      if (gba->io.power_state == POWER_STATE_HALTED) {
+        if (interrupt_pending(gba)) {
+          gba->io.power_state = POWER_STATE_NORMAL;
+        }
+      }
+
+      int cycles;
+      if (gba->io.power_state == POWER_STATE_HALTED) {
+        cycles = 1;
+      } else {
+        if (interrupt_pending(gba)) {
+          handle_interrupts(gba);
+        }
+        cycles = cpu_step(gba);
+      }
       ppu_step(gba, cycles);
-      // timer_step(timer, cycles);
-      // dma_step(dma, cycles);
-      // sound_step(sound, cycles);
+      total_cycles += cycles;
     }
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);

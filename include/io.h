@@ -1,9 +1,16 @@
 #pragma once
 #include "common.h"
 
+typedef enum {
+  POWER_STATE_NORMAL,
+  POWER_STATE_HALTED,
+  POWER_STATE_STOPPED
+} PowerState;
+
 typedef struct {
   u16 keycnt;
   u16 waitcnt;
+  PowerState power_state;
 } Io;
 
 void io_init(Io *io);
@@ -74,3 +81,4 @@ void io_write32(Gba *gba, u32 addr, u32 val);
 #define IME 0x04000208
 
 #define WAITCNT 0x04000204
+#define HALTCNT 0x04000301
