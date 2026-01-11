@@ -310,7 +310,7 @@ static int thumb_bx(Gba *gba, u16 instr) {
   u8 rn = GET_BITS(instr, 3, 4);
   printf("%04X: bx r%d\n", instr, rn);
 #endif
-  u8 msbs = TEST_BIT(instr, 6) >> 3;
+  u8 msbs = TEST_BIT(instr, 6) << 3;
   u8 rs = msbs | GET_BITS(instr, 3, 3);
   u32 target = REG(rs);
   if (rs == 15) {
@@ -331,8 +331,8 @@ static int thumb_bx(Gba *gba, u16 instr) {
 
 static int thumb_add_cmp_mov_hi(Gba *gba, u16 instr) {
   u8 opcode = GET_BITS(instr, 8, 2);
-  u8 msbd = TEST_BIT(instr, 7) >> 4;
-  u8 msbs = TEST_BIT(instr, 6) >> 3;
+  u8 msbd = TEST_BIT(instr, 7) << 3;
+  u8 msbs = TEST_BIT(instr, 6) << 3;
   u8 rs = msbs | GET_BITS(instr, 3, 3);
   u8 rd = msbd | GET_BITS(instr, 0, 3);
 

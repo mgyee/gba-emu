@@ -147,11 +147,6 @@ bool check_cond(Cpu *cpu, u32 instr) {
   bool C = cpu->cpsr & CPSR_C;
   bool V = cpu->cpsr & CPSR_V;
 
-  // bool N = (CPSR & CPSR_N);
-  // bool Z = (CPSR & CPSR_Z);
-  // bool C = (CPSR & CPSR_C);
-  // bool V = (CPSR & CPSR_V);
-
   switch (cond) {
   case 0x0: // EQ
     return Z;

@@ -301,18 +301,19 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
     break;
   case REGION_PALETTE:
     offset = address & 0x3FF;
-    write_mem8(gba->ppu.palram, offset, data);
+    write_mem16(gba->ppu.palram, offset, (data << 8) | data);
     break;
   case REGION_VRAM:
     offset = address & 0x1FFFF;
     if (offset >= 0x18000) {
       offset &= 0x17FFF;
     }
-    write_mem8(gba->ppu.vram, offset, data);
+    write_mem16(gba->ppu.vram, offset, (data << 8) | data);
     break;
   case REGION_OAM:
-    offset = address & 0x3FF;
-    write_mem8(gba->ppu.oam, offset, data);
+    // offset = address & 0x3FF;
+    // write_mem8(gba->ppu.oam, offset, data);
+    return;
     break;
   default:
     break;

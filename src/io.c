@@ -5,7 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 
-void io_init(Io *io) { memset(io, 0, sizeof(Io)); }
+void io_init(Io *io) {
+  memset(io, 0, sizeof(Io));
+  io->power_state = POWER_STATE_NORMAL;
+}
 
 u8 io_read8(Gba *gba, u32 addr) {
   Ppu *ppu = &gba->ppu;
@@ -242,7 +245,8 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     ppu->Lcd.greenswap = (ppu->Lcd.greenswap & 0x00FF) | (val << 8);
     break;
   case DISPSTAT:
-    ppu->Lcd.dispstat.val = (ppu->Lcd.dispstat.val & 0xFF00) | val;
+    // lower 3 bits are read only
+    ppu->Lcd.dispstat.val = (ppu->Lcd.dispstat.val & 0xFF07) | (val & 0xF8);
     ppu->Lcd.dispstat.vblank_irq = (val >> 3) & 1;
     ppu->Lcd.dispstat.hblank_irq = (val >> 4) & 1;
     ppu->Lcd.dispstat.vcounter_irq = (val >> 5) & 1;
@@ -564,6 +568,7 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     keypad->keycnt = (keypad->keycnt & 0x00FF) | (val << 8);
     break;
 
+  /* Interrupt */
   case IE:
     int_mgr->ie = (int_mgr->ie & 0xFF00) | val;
     break;
@@ -571,10 +576,10 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     int_mgr->ie = (int_mgr->ie & 0x00FF) | (val << 8);
     break;
   case IF:
-    int_mgr->if_ = (int_mgr->if_ & 0xFF00) | val;
+    int_mgr->if_ &= ~val;
     break;
   case IF + 1:
-    int_mgr->if_ = (int_mgr->if_ & 0x00FF) | (val << 8);
+    int_mgr->if_ &= ~(val << 8);
     break;
   case IME:
     int_mgr->ime = (int_mgr->ime & 0xFF00) | val;
@@ -583,6 +588,13 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     int_mgr->ime = (int_mgr->ime & 0x00FF) | (val << 8);
     break;
 
+  case HALTCNT:
+    if (val & 0x80) {
+      io->power_state = POWER_STATE_STOPPED;
+    } else {
+      io->power_state = POWER_STATE_HALTED;
+    }
+    break;
   case WAITCNT:
     io->waitcnt = (io->waitcnt & 0xFF00) | val;
     bus_update_waitstates(&gba->bus, io->waitcnt);

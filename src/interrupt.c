@@ -7,39 +7,31 @@ void interrupt_init(InterruptManager *int_mgr) {
   int_mgr->ime = 0;
 }
 
-void raise_interrupt(Gba *gba, InterruptType type) {
+void inline raise_interrupt(Gba *gba, InterruptType type) {
   gba->int_mgr.if_ |= (1 << type);
 }
 
-void handle_interrupts(Gba *gba) {
+bool inline interrupt_pending(Gba *gba) {
   InterruptManager *int_mgr = &gba->int_mgr;
+  return (int_mgr->ime & 1) && (int_mgr->ie & int_mgr->if_);
+}
 
-  if ((int_mgr->ime & 1) == 0) {
+void handle_interrupts(Gba *gba) {
+
+  if ((gba->cpu.cpsr & CPSR_I) == CPSR_I) {
     return;
   }
 
-  u16 pending = int_mgr->ie & int_mgr->if_;
-  if (pending == 0) {
-    return;
+  gba->cpu.spsr_irq = CPSR;
+  cpu_set_mode(&gba->cpu, MODE_IRQ);
+  if (CPSR & CPSR_T) {
+    LR = PC;
+  } else {
+    LR = PC - 4;
   }
+  CPSR &= ~CPSR_T;
+  CPSR |= CPSR_I;
+  PC = 0x18;
 
-  for (int i = 0; i < 14; i++) {
-    if (pending & (1 << i)) {
-      int_mgr->if_ &= ~(1 << i);
-
-      gba->cpu.spsr_svc = CPSR;
-      cpu_set_mode(&gba->cpu, MODE_IRQ);
-      CPSR |= CPSR_I;
-      LR = PC - 8;
-      PC = 0x18;
-
-      if (CPSR & CPSR_T) {
-        arm_fetch(gba);
-      } else {
-        thumb_fetch(gba);
-      }
-
-      break;
-    }
-  }
+  arm_fetch(gba);
 }

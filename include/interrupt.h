@@ -26,4 +26,5 @@ typedef struct {
 
 void interrupt_init(InterruptManager *int_mgr);
 void raise_interrupt(Gba *gba, InterruptType type);
+bool interrupt_pending(Gba *gba);
 void handle_interrupts(Gba *gba);
