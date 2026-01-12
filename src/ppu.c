@@ -336,7 +336,6 @@ static void render_bg_reg(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
   int map_y = (screen_y + ppu->Lcd.bgvofs[i]) % height;
   int block_y = map_y >> 8;
   int tile_y = (map_y & 255) >> 3;
-  int subtile_y = map_y % 8;
 
   int mos_h = ppu->Lcd.mosaic.bg_h + 1;
 
@@ -348,7 +347,6 @@ static void render_bg_reg(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
     int map_x = (screen_x + ppu->Lcd.bghofs[i]) % width;
     int block_x = map_x >> 8;
     int tile_x = (map_x & 255) >> 3;
-    int subtile_x = map_x % 8;
 
     u16 entry = map_base[(block_y * (width >> 8) + block_x) * 1024 +
                          tile_y * 32 + tile_x];
@@ -358,9 +356,12 @@ static void render_bg_reg(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
     bool vf = TEST_BIT(entry, 11);
     int pal_bank = GET_BITS(entry, 12, 4);
 
+    int subtile_x = map_x % 8;
     if (hf) {
       subtile_x = 7 - subtile_x;
     }
+
+    int subtile_y = map_y % 8;
     if (vf) {
       subtile_y = 7 - subtile_y;
     }
