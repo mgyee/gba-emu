@@ -147,27 +147,31 @@ int main(int argc, char *argv[]) {
     }
     int total_cycles = 0;
     while (total_cycles < CYCLES_PER_FRAME) {
+      int cycles = 0;
+
+      gba->bus.cycle_count = 0;
 
       if (dma_active(&gba->dma)) {
         dma_step(gba);
-        continue;
-      }
-
-      if (gba->io.power_state == POWER_STATE_HALTED) {
-        if (interrupt_pending(gba)) {
-          gba->io.power_state = POWER_STATE_NORMAL;
-        }
-      }
-
-      int cycles;
-      if (gba->io.power_state == POWER_STATE_HALTED) {
-        cycles = 1;
       } else {
-        if (interrupt_pending(gba)) {
-          handle_interrupts(gba);
+        if (gba->io.power_state == POWER_STATE_HALTED) {
+          if (interrupt_pending(gba)) {
+            gba->io.power_state = POWER_STATE_NORMAL;
+          }
         }
-        cycles = cpu_step(gba);
+
+        if (gba->io.power_state == POWER_STATE_HALTED) {
+          cycles += 16;
+        } else {
+          if (interrupt_pending(gba)) {
+            handle_interrupts(gba);
+          }
+          cycles += cpu_step(gba);
+        }
       }
+
+      cycles += gba->bus.cycle_count;
+
       ppu_step(gba, cycles);
       total_cycles += cycles;
     }

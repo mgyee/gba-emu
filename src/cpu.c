@@ -125,7 +125,6 @@ void cpu_set_mode(Cpu *cpu, u32 new_mode) {
 
 int cpu_step(Gba *gba) {
   int cycles = 0;
-  gba->bus.cycle_count = 0;
 
 #ifdef DEBUG
   printf("%08X: ", PC);
@@ -135,7 +134,6 @@ int cpu_step(Gba *gba) {
   } else {
     cycles += arm_step(gba);
   }
-  cycles += gba->bus.cycle_count;
   return cycles;
 }
 

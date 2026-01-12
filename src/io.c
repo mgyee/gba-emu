@@ -92,7 +92,7 @@ u8 io_read8(Gba *gba, u32 addr) {
   case WAITCNT + 1:
     return (io->waitcnt >> 8) & 0xFF;
   default:
-    printf("unhandled io read: %08X\n", addr);
+    // printf("unhandled io read: %08X\n", addr);
     return 0;
   }
 }
@@ -503,7 +503,7 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     bus_update_waitstates(&gba->bus, io->waitcnt);
     break;
   default:
-    printf("unhandled io write: %08X\n", addr);
+    // printf("unhandled io write: %08X\n", addr);
     break;
   }
 }
@@ -569,7 +569,7 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
   case DMA3SAD + 2: {
     int ch = (addr - (DMA0SAD + 2)) / 12;
     dma->channels[ch].src_addr =
-        (dma->channels[ch].src_addr & 0xFFFF0000) | val;
+        (dma->channels[ch].src_addr & 0x0000FFFF) | (val << 16);
     break;
   }
   case DMA0DAD:
@@ -587,7 +587,7 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
   case DMA3DAD + 2: {
     int ch = (addr - (DMA0DAD + 2)) / 12;
     dma->channels[ch].dst_addr =
-        (dma->channels[ch].dst_addr & 0xFFFF0000) | val;
+        (dma->channels[ch].dst_addr & 0x0000FFFF) | (val << 16);
     break;
   }
   case DMA0CNT_L:

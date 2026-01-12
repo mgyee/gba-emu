@@ -78,7 +78,7 @@ void dma_transfer(Gba *gba, int ch) {
     break;
   }
 
-  channel->internal_count -= 1;
+  channel->internal_count--;
 
   if (channel->internal_count == 0) {
     if (control->repeat) {

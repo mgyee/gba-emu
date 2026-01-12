@@ -554,7 +554,7 @@ static u16 blend(u16 color_a, u16 color_b, int weight_a, int weight_b) {
 }
 
 static bool in_win(int v, int left, int right) {
-  if (left < right) {
+  if (left <= right) {
     return v >= left && v < right;
   } else {
     return v >= left || v < right;
@@ -729,63 +729,6 @@ static void render_scanline(Ppu *ppu) {
   }
 }
 
-// void ppu_step(Gba *gba, int cycles) {
-//   Ppu *ppu = &gba->ppu;
-//   ppu->cycle += cycles;
-//
-//   while (ppu->cycle >= CYCLES_PER_SCANLINE) {
-//     ppu->cycle -= CYCLES_PER_SCANLINE;
-//
-//     ppu->Lcd.dispstat.hblank = 0;
-//     ppu->Lcd.dispstat.val &= ~2;
-//
-//     if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
-//       render_scanline(ppu);
-//
-//       ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
-//       ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
-//       ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
-//       ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
-//     } else if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
-//       ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-//       ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-//       ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-//       ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-//     }
-//
-//     ppu->Lcd.vcount++;
-//
-//     if (ppu->Lcd.vcount >= SCANLINES_PER_FRAME) {
-//       ppu->Lcd.vcount = 0;
-//     }
-//
-//     if (ppu->Lcd.vcount == ppu->Lcd.dispstat.vcount_setting) {
-//       ppu->Lcd.dispstat.vcounter = 1;
-//       ppu->Lcd.dispstat.val |= 4;
-//
-//       if (ppu->Lcd.dispstat.vcounter_irq) {
-//         raise_interrupt(gba, INT_VCOUNT);
-//       }
-//     } else {
-//       ppu->Lcd.dispstat.vcounter = 0;
-//       ppu->Lcd.dispstat.val &= ~4;
-//     }
-//
-//     if (ppu->Lcd.vcount >= VISIBLE_SCANLINES) {
-//       ppu->Lcd.dispstat.vblank = 1;
-//       ppu->Lcd.dispstat.val |= 1;
-//
-//       if (ppu->Lcd.vcount == VISIBLE_SCANLINES &&
-//           ppu->Lcd.dispstat.vblank_irq) {
-//         raise_interrupt(gba, INT_VBLANK);
-//       }
-//     } else if (ppu->Lcd.vcount == 0) {
-//       ppu->Lcd.dispstat.vblank = 0;
-//       ppu->Lcd.dispstat.val &= ~1;
-//     }
-//   }
-// }
-
 void ppu_step(Gba *gba, int cycles) {
   Ppu *ppu = &gba->ppu;
   ppu->cycle += cycles;
@@ -793,6 +736,11 @@ void ppu_step(Gba *gba, int cycles) {
   while (ppu->cycle >= H_VISIBLE_CYCLES) {
 
     if (!ppu->Lcd.dispstat.hblank) {
+
+      if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+        render_scanline(ppu);
+      }
+
       ppu->Lcd.dispstat.hblank = 1;
       ppu->Lcd.dispstat.val |= 2;
 
@@ -812,7 +760,6 @@ void ppu_step(Gba *gba, int cycles) {
     ppu->Lcd.dispstat.val &= ~2;
 
     if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
-      render_scanline(ppu);
 
       ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
       ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
@@ -852,10 +799,6 @@ void ppu_step(Gba *gba, int cycles) {
       }
       dma_on_vblank(gba);
 
-      // ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-      // ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-      // ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-      // ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
     } else if (ppu->Lcd.vcount == 0) {
       ppu->Lcd.dispstat.vblank = 0;
       ppu->Lcd.dispstat.val &= ~1;
