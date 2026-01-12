@@ -8,6 +8,7 @@
 #include "keypad.h"
 #include "ppu.h"
 #include "rom.h"
+#include "timer.h"
 
 struct Gba {
   u8 bios[0x4000];
@@ -30,7 +31,7 @@ struct Gba {
 
   Dma dma;
 
-  // timer
+  TimerManager tmr_mgr;
 
   // cartrige
   //

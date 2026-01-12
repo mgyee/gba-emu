@@ -104,3 +104,14 @@ void io_write32(Gba *gba, u32 addr, u32 val);
 #define DMA1CNT_H 0x040000C6
 #define DMA2CNT_H 0x040000D2
 #define DMA3CNT_H 0x040000DE
+
+// Timer
+#define TM0CNT_L 0x04000100
+#define TM1CNT_L 0x04000104
+#define TM2CNT_L 0x04000108
+#define TM3CNT_L 0x0400010C
+
+#define TM0CNT_H 0x04000102
+#define TM1CNT_H 0x04000106
+#define TM2CNT_H 0x0400010A
+#define TM3CNT_H 0x0400010E

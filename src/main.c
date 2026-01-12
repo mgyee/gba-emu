@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
         case SDLK_RETURN:
           gba->keypad.keyinput &= ~(1 << BUTTON_START);
           break;
-        case SDLK_RSHIFT:
+        case SDLK_BACKSPACE:
           gba->keypad.keyinput &= ~(1 << BUTTON_SELECT);
           break;
         }
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
         case SDLK_RETURN:
           gba->keypad.keyinput |= (1 << BUTTON_START);
           break;
-        case SDLK_RSHIFT:
+        case SDLK_BACKSPACE:
           gba->keypad.keyinput |= (1 << BUTTON_SELECT);
           break;
         }
@@ -173,6 +173,7 @@ int main(int argc, char *argv[]) {
       cycles += gba->bus.cycle_count;
 
       ppu_step(gba, cycles);
+      timer_step(gba, cycles);
       total_cycles += cycles;
     }
 

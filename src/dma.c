@@ -99,20 +99,7 @@ void dma_transfer(Gba *gba, int ch) {
     }
 
     if (control->irq) {
-      switch (ch) {
-      case 0:
-        raise_interrupt(gba, INT_DMA0);
-        break;
-      case 1:
-        raise_interrupt(gba, INT_DMA1);
-        break;
-      case 2:
-        raise_interrupt(gba, INT_DMA2);
-        break;
-      case 3:
-        raise_interrupt(gba, INT_DMA3);
-        break;
-      }
+      raise_interrupt(gba, INT_DMA0 + ch);
     }
 
     dma->active &= ~BIT(ch);

@@ -19,6 +19,7 @@ bool gba_init(Gba *gba, const char *bios_path, const char *rom_path) {
   io_init(&gba->io);
   keypad_init(&gba->keypad);
   dma_init(&gba->dma);
+  timer_init(&gba->tmr_mgr);
 
   arm_fetch(gba);
   return true;

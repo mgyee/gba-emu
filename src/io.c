@@ -4,6 +4,7 @@
 #include "dma.h"
 #include "gba.h"
 #include "ppu.h"
+#include "timer.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -99,6 +100,7 @@ u8 io_read8(Gba *gba, u32 addr) {
 
 u16 io_read16(Gba *gba, u32 addr) {
   Dma *dma = &gba->dma;
+  TimerManager *tmr_mgr = &gba->tmr_mgr;
   switch (addr) {
   case DMA0CNT_H:
   case DMA1CNT_H:
@@ -106,6 +108,20 @@ u16 io_read16(Gba *gba, u32 addr) {
   case DMA3CNT_H: {
     int ch = (addr - DMA0CNT_H) / 12;
     return dma->channels[ch].control.val;
+  }
+  case TM0CNT_L:
+  case TM1CNT_L:
+  case TM2CNT_L:
+  case TM3CNT_L: {
+    int i = (addr - TM0CNT_L) / 4;
+    return tmr_mgr->timers[i].count;
+  }
+  case TM0CNT_H:
+  case TM1CNT_H:
+  case TM2CNT_H:
+  case TM3CNT_H: {
+    int i = (addr - TM0CNT_H) / 4;
+    return tmr_mgr->timers[i].control.val;
   }
   }
   return io_read8(gba, addr) | (io_read8(gba, addr + 1) << 8);
@@ -513,6 +529,7 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
   Io *io = &gba->io;
   Keypad *keypad = &gba->keypad;
   Dma *dma = &gba->dma;
+  TimerManager *tmr_mgr = &gba->tmr_mgr;
 
   switch (addr) {
   // LCD
@@ -604,7 +621,9 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
   case DMA3CNT_H: {
     int ch = (addr - DMA0CNT_H) / 12;
     DmaControl *control = &dma->channels[ch].control;
-    bool enabled = !control->enable;
+
+    bool was_enabled = control->enable;
+
     control->val = val;
     control->dst_adjustment = GET_BITS(val, 5, 2);
     control->src_adjustment = GET_BITS(val, 7, 2);
@@ -614,9 +633,7 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
     control->irq = TEST_BIT(val, 14);
     control->enable = TEST_BIT(val, 15);
 
-    enabled &= control->enable;
-
-    if (enabled) {
+    if (!was_enabled && control->enable) {
       DmaChannel *channel = &dma->channels[ch];
       channel->internal_src_addr = channel->src_addr;
       channel->internal_dst_addr = channel->dst_addr;
@@ -633,6 +650,49 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
       if (control->timing == TIMING_MODE_NOW) {
         dma_activate(dma, ch);
       }
+    }
+    break;
+  }
+
+  // Timer
+  case TM0CNT_L:
+  case TM1CNT_L:
+  case TM2CNT_L:
+  case TM3CNT_L: {
+    int i = (addr - TM0CNT_L) / 4;
+    tmr_mgr->timers[i].reload_count = val;
+    break;
+  }
+  case TM0CNT_H:
+  case TM1CNT_H:
+  case TM2CNT_H:
+  case TM3CNT_H: {
+    int i = (addr - TM0CNT_H) / 4;
+    TimerControl *control = &tmr_mgr->timers[i].control;
+
+    bool was_enabled = control->enable;
+
+    control->val = val;
+    int freq = GET_BITS(val, 0, 2);
+    switch (freq) {
+    case 0:
+      control->freq = 1;
+      break;
+    case 1:
+      control->freq = 64;
+      break;
+    case 2:
+      control->freq = 256;
+      break;
+    case 3:
+      control->freq = 1024;
+      break;
+    }
+    control->cascade = TEST_BIT(val, 2);
+    control->irq = TEST_BIT(val, 6);
+    control->enable = TEST_BIT(val, 7);
+    if (!was_enabled && control->enable) {
+      tmr_mgr->timers[i].count = tmr_mgr->timers[i].reload_count;
     }
     break;
   }
