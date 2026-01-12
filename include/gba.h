@@ -2,6 +2,7 @@
 #include "bus.h"
 #include "common.h"
 #include "cpu.h"
+#include "dma.h"
 #include "interrupt.h"
 #include "io.h"
 #include "keypad.h"
@@ -27,7 +28,7 @@ struct Gba {
 
   InterruptManager int_mgr;
 
-  // dma
+  Dma dma;
 
   // timer
 

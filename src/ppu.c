@@ -1,5 +1,6 @@
 #include "ppu.h"
 #include "common.h"
+#include "dma.h"
 #include "gba.h"
 #include <string.h>
 
@@ -406,7 +407,7 @@ static void render_bg_aff(Ppu *ppu, int i, u16 buffer[PIXELS_WIDTH]) {
   int width = 1 << shift;
   int height = 1 << shift;
 
-  int wrap = ppu->Lcd.bgcnt[i].display_area_overflow;
+  int wrap = ppu->Lcd.bgcnt[i].aff_wrap;
   int mosaic = ppu->Lcd.bgcnt[i].mosaic;
 
   int screen_y = ppu->Lcd.vcount;
@@ -500,7 +501,7 @@ static void render_mode3(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
 }
 
 static void render_mode4(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
-  u8 *vram_ptr = ppu->vram + (ppu->Lcd.dispcnt.frame * 0xA000) +
+  u8 *vram_ptr = ppu->vram + (ppu->Lcd.dispcnt.page * 0xA000) +
                  (ppu->Lcd.vcount * PIXELS_WIDTH);
   u16 *buffer = bg_buffers[2];
 
@@ -513,7 +514,7 @@ static void render_mode4(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
 }
 
 static void render_mode5(Ppu *ppu, u16 bg_buffers[4][PIXELS_WIDTH]) {
-  u16 *vram_ptr = (u16 *)(ppu->vram + (ppu->Lcd.dispcnt.frame * 0xA000)) +
+  u16 *vram_ptr = (u16 *)(ppu->vram + (ppu->Lcd.dispcnt.page * 0xA000)) +
                   (ppu->Lcd.vcount * PIXELS_HEIGHT);
   u16 *buffer = bg_buffers[2];
 
@@ -697,7 +698,7 @@ static void render_scanline(Ppu *ppu) {
     Effect effect = ppu->Lcd.blendcnt.effect;
 
     if (blend_obj && blend_bot) {
-      effect = BLEND_ALPHA;
+      effect = ALPHA;
     }
 
     u16 color = top.color;
@@ -706,20 +707,20 @@ static void render_scanline(Ppu *ppu) {
 
     if (blend_obj || blend_top) {
       switch (effect) {
-      case BLEND_ALPHA:
+      case ALPHA:
         if (blend_bot) {
           color = blend(top.color, bot.color, ppu->Lcd.eva, ppu->Lcd.evb);
         }
         break;
-      case BLEND_BRIGHTEN: {
+      case BRIGHTEN: {
         color = blend(top.color, WHITE, 16 - fade, fade);
         break;
       }
-      case BLEND_DARKEN: {
+      case DARKEN: {
         color = blend(top.color, BLACK, 16 - fade, fade);
         break;
       }
-      case BLEND_NONE:
+      case NONE:
         break;
       }
     }
@@ -798,6 +799,9 @@ void ppu_step(Gba *gba, int cycles) {
       if (ppu->Lcd.dispstat.hblank_irq) {
         raise_interrupt(gba, INT_HBLANK);
       }
+      if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+        dma_on_hblank(gba);
+      }
     }
     if (ppu->cycle < CYCLES_PER_SCANLINE) {
       break;
@@ -846,6 +850,7 @@ void ppu_step(Gba *gba, int cycles) {
       if (ppu->Lcd.dispstat.vblank_irq) {
         raise_interrupt(gba, INT_VBLANK);
       }
+      dma_on_vblank(gba);
 
       // ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
       // ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;

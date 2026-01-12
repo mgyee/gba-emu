@@ -148,6 +148,11 @@ int main(int argc, char *argv[]) {
     int total_cycles = 0;
     while (total_cycles < CYCLES_PER_FRAME) {
 
+      if (dma_active(&gba->dma)) {
+        dma_step(gba);
+        continue;
+      }
+
       if (gba->io.power_state == POWER_STATE_HALTED) {
         if (interrupt_pending(gba)) {
           gba->io.power_state = POWER_STATE_NORMAL;

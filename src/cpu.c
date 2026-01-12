@@ -1,6 +1,5 @@
 #include "cpu.h"
 #include "gba.h"
-#include <assert.h>
 #include <string.h>
 
 void cpu_init(Cpu *cpu) {
@@ -289,8 +288,6 @@ ShiftRes barrel_shifter(Cpu *cpu, Shift shift, u32 val, u32 amt, bool imm) {
     return ASR(cpu, val, amt, imm);
   case SHIFT_ROR:
     return ROR(cpu, val, amt, imm);
-  default:
-    assert(false);
   }
 }
 

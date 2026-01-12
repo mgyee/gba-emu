@@ -13,10 +13,10 @@
 #define WIN_BLD_IDX 5
 
 typedef enum {
-  BLEND_NONE,
-  BLEND_ALPHA,
-  BLEND_BRIGHTEN,
-  BLEND_DARKEN,
+  NONE,
+  ALPHA,
+  BRIGHTEN,
+  DARKEN,
 } Effect;
 
 struct Ppu {
@@ -31,41 +31,47 @@ struct Ppu {
     struct {
       u16 val;
       int mode;
-      int cg_mode;
-      int frame;
-      int hblank_oam_access;
-      int oam_mapping_1d;
-      int forced_blank;
-      int enable[8];
+      bool cg_mode;
+      bool page;
+      bool hblank_oam_access;
+      bool oam_mapping_1d;
+      bool forced_blank;
+      bool enable[8];
     } dispcnt;
+
     u16 greenswap;
+
     struct {
       u16 val;
-      int vblank;
-      int hblank;
-      int vcounter;
-      int vblank_irq;
-      int hblank_irq;
-      int vcounter_irq;
+      bool vblank;
+      bool hblank;
+      bool vcounter;
+      bool vblank_irq;
+      bool hblank_irq;
+      bool vcounter_irq;
       int vcount_setting;
     } dispstat;
+
     u16 vcount;
+
     struct {
       u16 val;
       int priority;
       int char_base_block;
-      int mosaic;
-      int colors;
+      bool mosaic;
+      bool colors;
       int screen_base_block;
-      int display_area_overflow;
+      bool aff_wrap;
       int screen_size;
     } bgcnt[4];
+
     u16 bghofs[4];
     u16 bgvofs[4];
     s16 bgpa[2];
     s16 bgpb[2];
     s16 bgpc[2];
     s16 bgpd[2];
+
     struct {
       s32 current;
       s32 internal;
@@ -87,7 +93,7 @@ struct Ppu {
     } winout;
 
     struct {
-      u16 val;
+
       int bg_h;
       int bg_v;
       int obj_h;
