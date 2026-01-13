@@ -289,7 +289,7 @@ static void render_objs(Ppu *ppu, ObjBufferEntry buffer[PIXELS_WIDTH]) {
 
   ObjAttr *oam = (ObjAttr *)ppu->oam;
 
-  for (int i = 127; i >= 0; i--) {
+  for (int i = 0; i < 128; i++) {
     ObjAttr *obj = &oam[i];
     int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
 
