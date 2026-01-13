@@ -1,7 +1,7 @@
 #include "ppu.h"
 #include "common.h"
-#include "dma.h"
 #include "gba.h"
+#include <assert.h>
 #include <string.h>
 
 #define CYCLES_PER_SCANLINE 1232
@@ -571,11 +571,14 @@ static void render_scanline(Ppu *ppu) {
   }
 
   ObjBufferEntry obj_buffer[PIXELS_WIDTH];
+  memset(obj_buffer, 0, sizeof(obj_buffer));
 
   u16 bg_buffers[4][PIXELS_WIDTH];
 
   for (int i = 0; i < PIXELS_WIDTH; i++) {
     obj_buffer[i].color = TRANSPARENT;
+    obj_buffer[i].prio = 4;
+
     bg_buffers[0][i] = TRANSPARENT;
     bg_buffers[1][i] = TRANSPARENT;
     bg_buffers[2][i] = TRANSPARENT;
@@ -604,6 +607,7 @@ static void render_scanline(Ppu *ppu) {
     render_mode5(ppu, bg_buffers);
     break;
   default:
+    assert(false);
     break;
   }
 
@@ -685,7 +689,7 @@ static void render_scanline(Ppu *ppu) {
       }
     }
 
-    bool blend_obj = (top.idx == OBJ_IDX) && obj_buffer[x].blend;
+    bool blend_obj = (top.idx == OBJ_IDX) && entry.blend;
 
     if (!(blend_obj || window[WIN_BLD_IDX])) {
       dest[x] = rgb15_to_argb(top.color);

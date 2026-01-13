@@ -99,9 +99,15 @@ u8 io_read8(Gba *gba, u32 addr) {
 }
 
 u16 io_read16(Gba *gba, u32 addr) {
+  Apu *apu = &gba->apu;
   Dma *dma = &gba->dma;
   TimerManager *tmr_mgr = &gba->tmr_mgr;
   switch (addr) {
+  // Sound
+  case SOUNDBIAS:
+    return apu->soundbias;
+
+  // DMA
   case DMA0CNT_H:
   case DMA1CNT_H:
   case DMA2CNT_H:
@@ -109,6 +115,8 @@ u16 io_read16(Gba *gba, u32 addr) {
     int ch = (addr - DMA0CNT_H) / 12;
     return dma->channels[ch].control.val;
   }
+
+  // Timer
   case TM0CNT_L:
   case TM1CNT_L:
   case TM2CNT_L:
@@ -510,6 +518,7 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
       io->power_state = POWER_STATE_HALTED;
     }
     break;
+
   case WAITCNT:
     io->waitcnt = (io->waitcnt & 0xFF00) | val;
     bus_update_waitstates(&gba->bus, io->waitcnt);
@@ -526,6 +535,7 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
 
 void io_write16(Gba *gba, u32 addr, u16 val) {
   Ppu *ppu = &gba->ppu;
+  Apu *apu = &gba->apu;
   Io *io = &gba->io;
   Keypad *keypad = &gba->keypad;
   Dma *dma = &gba->dma;
@@ -568,6 +578,11 @@ void io_write16(Gba *gba, u32 addr, u16 val) {
     ppu->Lcd.bgy[1].current =
         (ppu->Lcd.bgy[1].current & 0x0000FFFF) | (val << 16);
     ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
+    break;
+
+  // Sound
+  case SOUNDBIAS:
+    apu->soundbias = val;
     break;
 
   // DMA

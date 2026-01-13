@@ -1,4 +1,5 @@
 #pragma once
+#include "apu.h"
 #include "bus.h"
 #include "common.h"
 #include "cpu.h"
@@ -25,7 +26,7 @@ struct Gba {
 
   Ppu ppu;
 
-  // apu
+  Apu apu;
 
   InterruptManager int_mgr;
 

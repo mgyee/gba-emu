@@ -16,10 +16,12 @@ bool gba_init(Gba *gba, const char *bios_path, const char *rom_path) {
   cpu_init(&gba->cpu);
   bus_init(&gba->bus);
   ppu_init(&gba->ppu);
+  apu_init(&gba->apu);
   io_init(&gba->io);
   keypad_init(&gba->keypad);
   dma_init(&gba->dma);
   timer_init(&gba->tmr_mgr);
+  interrupt_init(&gba->int_mgr);
 
   arm_fetch(gba);
   return true;

@@ -72,6 +72,9 @@ void io_write32(Gba *gba, u32 addr, u32 val);
 #define BLDALPHA 0x04000052
 #define BLDY 0x04000054
 
+// Sound
+#define SOUNDBIAS 0x04000088
+
 // Key Input
 #define KEYINPUT 0x04000130
 #define KEYCNT 0x04000132

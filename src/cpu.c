@@ -7,14 +7,18 @@ void cpu_init(Cpu *cpu) {
   arm_init_lut();
   thumb_init_lut();
 
-  cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
-      0x03007F00;
-  cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
+  // cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
+  //     0x03007F00;
+  // cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
+  //
+  // cpu->regs[15] = 0x08000000;
+  //
+  // cpu->cpsr |= MODE_SYS | CPSR_I | CPSR_F;
+  //
+  // cpu->spsr = &cpu->cpsr;
 
-  cpu->regs[15] = 0x08000000;
-
-  cpu->cpsr |= MODE_SYS | CPSR_I | CPSR_F;
-
+  cpu->regs[15] = 0x00000000;
+  cpu->cpsr |= MODE_SVC | CPSR_I | CPSR_F;
   cpu->spsr = &cpu->cpsr;
 
   cpu->next_fetch_access = ACCESS_NONSEQ;
