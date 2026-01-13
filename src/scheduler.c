@@ -42,12 +42,12 @@ Event *scheduler_pop_event(Scheduler *scheduler) {
   return event;
 }
 
-void scheduler_cancel_event(Scheduler *scheduler, Event *event) {
+void scheduler_cancel_event(Scheduler *scheduler, EventType type, void *ctx) {
   Event *current = scheduler->head;
   Event *prev = NULL;
 
   while (current != NULL) {
-    if (current == event) {
+    if (current->type == type && current->ctx == ctx) {
       if (prev == NULL) {
         scheduler->head = current->next;
       } else {

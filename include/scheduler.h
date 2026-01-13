@@ -33,7 +33,7 @@ void scheduler_push_event_ctx(Scheduler *scheduler, EventType type,
 
 Event *scheduler_pop_event(Scheduler *scheduler);
 
-void scheduler_cancel_event(Scheduler *scheduler, Event *event);
+void scheduler_cancel_event(Scheduler *scheduler, EventType type, void *ctx);
 
 uint scheduler_peek_next_event_time(Scheduler *scheduler);
 

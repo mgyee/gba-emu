@@ -7,6 +7,9 @@
 #include "ppu.h"
 #include "scheduler.h"
 #include <SDL.h>
+#include <stdint.h>
+
+bool turbo = false;
 
 bool handle_input(Gba *gba) {
   SDL_Event event;
@@ -16,6 +19,9 @@ bool handle_input(Gba *gba) {
       return true;
     case SDL_KEYDOWN:
       switch (event.key.keysym.sym) {
+      case SDLK_TAB:
+        turbo = true;
+        break;
       case SDLK_UP:
         gba->keypad.keyinput &= ~(1 << BUTTON_UP);
         break;
@@ -50,6 +56,9 @@ bool handle_input(Gba *gba) {
       break;
     case SDL_KEYUP:
       switch (event.key.keysym.sym) {
+      case SDLK_TAB:
+        turbo = false;
+        break;
       case SDLK_UP:
         gba->keypad.keyinput |= (1 << BUTTON_UP);
         break;
@@ -162,31 +171,34 @@ int main(int argc, char *argv[]) {
 
     while (true) {
 
-      uint cycles = 0;
-      gba->bus.cycle_count = 0;
+      while ((int)(scheduler_peek_next_event_time(scheduler) -
+                   scheduler->current_time) > 0) {
+        uint cycles = 0;
+        gba->bus.cycle_count = 0;
 
-      if (dma_active(&gba->dma)) {
-        dma_step(gba);
-      } else {
-        if (gba->io.power_state == POWER_STATE_HALTED) {
-          if (interrupt_pending(gba)) {
-            gba->io.power_state = POWER_STATE_NORMAL;
-          } else {
-            int next_event_time = scheduler_peek_next_event_time(scheduler);
-            scheduler_step(scheduler,
-                           next_event_time - scheduler->current_time);
-            break;
+        if (dma_active(&gba->dma)) {
+          dma_step(gba);
+        } else {
+          if (gba->io.power_state == POWER_STATE_HALTED) {
+            if (interrupt_pending(gba)) {
+              gba->io.power_state = POWER_STATE_NORMAL;
+            } else {
+              int next_event_time = scheduler_peek_next_event_time(scheduler);
+              scheduler_step(scheduler,
+                             next_event_time - scheduler->current_time);
+              break;
+            }
           }
-        }
 
-        if (interrupt_pending(gba)) {
-          handle_interrupts(gba);
+          if (interrupt_pending(gba)) {
+            handle_interrupts(gba);
+          }
+          cycles += cpu_step(gba);
         }
-        cycles += cpu_step(gba);
+        cycles += gba->bus.cycle_count;
+
+        scheduler_step(scheduler, cycles);
       }
-      cycles += gba->bus.cycle_count;
-
-      scheduler_step(scheduler, cycles);
 
       bool frame_done = false;
 
@@ -216,10 +228,10 @@ int main(int argc, char *argv[]) {
           ppu_vblank_hblank_end(gba, lateness);
           break;
         case EVENT_TYPE_TIMER_OVERFLOW:
-          // timer_overflow(gba, event->ctx);
+          timer_overflow(gba, (int)(intptr_t)event->ctx, lateness);
           break;
         case EVENT_TYPE_DMA_ACTIVATE:
-          // dma_activate(gba, event->ctx);
+          dma_activate(&gba->dma, (int)(intptr_t)event->ctx);
           break;
         }
         free(event);
@@ -242,7 +254,7 @@ int main(int argc, char *argv[]) {
     SDL_RenderPresent(renderer);
 
     Uint32 frame_time = SDL_GetTicks() - frame_start_time;
-    if (frame_time < FRAME_TIME_MS) {
+    if (!turbo && frame_time < FRAME_TIME_MS) {
       SDL_Delay(FRAME_TIME_MS - frame_time);
     }
 

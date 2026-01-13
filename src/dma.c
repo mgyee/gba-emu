@@ -106,6 +106,42 @@ void dma_transfer(Gba *gba, int ch) {
   }
 }
 
+void dma_control_write(Gba *gba, int ch, u16 val) {
+  Dma *dma = &gba->dma;
+  DmaControl *control = &dma->channels[ch].control;
+
+  bool was_enabled = control->enable;
+
+  control->val = val;
+  control->dst_adjustment = GET_BITS(val, 5, 2);
+  control->src_adjustment = GET_BITS(val, 7, 2);
+  control->repeat = TEST_BIT(val, 9);
+  control->chunk_size = TEST_BIT(val, 10) ? 4 : 2;
+  control->timing = GET_BITS(val, 12, 2);
+  control->irq = TEST_BIT(val, 14);
+  control->enable = TEST_BIT(val, 15);
+
+  if (!was_enabled && control->enable) {
+    DmaChannel *channel = &dma->channels[ch];
+    channel->internal_src_addr = channel->src_addr;
+    channel->internal_dst_addr = channel->dst_addr;
+    if (channel->count == 0) {
+      if (ch == 3) {
+        channel->internal_count = 0x10000;
+      } else {
+        channel->internal_count = 0x4000;
+      }
+    } else {
+      channel->internal_count = channel->count;
+    }
+
+    if (control->timing == TIMING_MODE_NOW) {
+      scheduler_push_event_ctx(&gba->scheduler, EVENT_TYPE_DMA_ACTIVATE, 2,
+                               (void *)(intptr_t)ch);
+    }
+  }
+}
+
 void dma_step(Gba *gba) {
   Dma *dma = &gba->dma;
 
