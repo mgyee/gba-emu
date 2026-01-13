@@ -151,17 +151,17 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   switch (addr) {
   case DISPCNT:
     ppu->Lcd.dispcnt.val = (ppu->Lcd.dispcnt.val & 0xFF00) | val;
-    ppu->Lcd.dispcnt.mode = val & 0x7;
-    ppu->Lcd.dispcnt.cg_mode = (val >> 3) & 1;
-    ppu->Lcd.dispcnt.page = (val >> 4) & 1;
-    ppu->Lcd.dispcnt.hblank_oam_access = (val >> 5) & 1;
-    ppu->Lcd.dispcnt.oam_mapping_1d = (val >> 6) & 1;
-    ppu->Lcd.dispcnt.forced_blank = (val >> 7) & 1;
+    ppu->Lcd.dispcnt.mode = GET_BITS(val, 0, 3);
+    ppu->Lcd.dispcnt.cg_mode = TEST_BIT(val, 3);
+    ppu->Lcd.dispcnt.page = TEST_BIT(val, 4);
+    ppu->Lcd.dispcnt.hblank_oam_access = TEST_BIT(val, 5);
+    ppu->Lcd.dispcnt.oam_mapping_1d = TEST_BIT(val, 6);
+    ppu->Lcd.dispcnt.forced_blank = TEST_BIT(val, 7);
     break;
   case DISPCNT + 1:
     ppu->Lcd.dispcnt.val = (ppu->Lcd.dispcnt.val & 0x00FF) | (val << 8);
     for (int i = 0; i < 8; i++) {
-      ppu->Lcd.dispcnt.enable[i] = (val >> i) & 1;
+      ppu->Lcd.dispcnt.enable[i] = TEST_BIT(val, i);
     }
     break;
   case GREENSWAP:
@@ -173,66 +173,37 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   case DISPSTAT:
     // lower 3 bits are read only
     ppu->Lcd.dispstat.val = (ppu->Lcd.dispstat.val & 0xFF07) | (val & 0xF8);
-    ppu->Lcd.dispstat.vblank_irq = (val >> 3) & 1;
-    ppu->Lcd.dispstat.hblank_irq = (val >> 4) & 1;
-    ppu->Lcd.dispstat.vcounter_irq = (val >> 5) & 1;
+    ppu->Lcd.dispstat.vblank_irq = TEST_BIT(val, 3);
+    ppu->Lcd.dispstat.hblank_irq = TEST_BIT(val, 4);
+    ppu->Lcd.dispstat.vcounter_irq = TEST_BIT(val, 5);
     break;
   case DISPSTAT + 1:
     ppu->Lcd.dispstat.val = (ppu->Lcd.dispstat.val & 0x00FF) | (val << 8);
     ppu->Lcd.dispstat.vcount_setting = val;
     break;
   case BG0CNT:
-    ppu->Lcd.bgcnt[0].val = (ppu->Lcd.bgcnt[0].val & 0xFF00) | val;
-    ppu->Lcd.bgcnt[0].priority = val & 0x3;
-    ppu->Lcd.bgcnt[0].char_base_block = (val >> 2) & 0x3;
-    ppu->Lcd.bgcnt[0].mosaic = (val >> 6) & 1;
-    ppu->Lcd.bgcnt[0].colors = (val >> 7) & 1;
-    break;
   case BG1CNT:
-    ppu->Lcd.bgcnt[1].val = (ppu->Lcd.bgcnt[1].val & 0xFF00) | val;
-    ppu->Lcd.bgcnt[1].priority = val & 0x3;
-    ppu->Lcd.bgcnt[1].char_base_block = (val >> 2) & 0x3;
-    ppu->Lcd.bgcnt[1].mosaic = (val >> 6) & 1;
-    ppu->Lcd.bgcnt[1].colors = (val >> 7) & 1;
-    break;
   case BG2CNT:
-    ppu->Lcd.bgcnt[2].val = (ppu->Lcd.bgcnt[2].val & 0xFF00) | val;
-    ppu->Lcd.bgcnt[2].priority = val & 0x3;
-    ppu->Lcd.bgcnt[2].char_base_block = (val >> 2) & 0x3;
-    ppu->Lcd.bgcnt[2].mosaic = (val >> 6) & 1;
-    ppu->Lcd.bgcnt[2].colors = (val >> 7) & 1;
+  case BG3CNT: {
+    int i = (addr - BG0CNT) / 2;
+    ppu->Lcd.bgcnt[i].val = (ppu->Lcd.bgcnt[i].val & 0xFF00) | val;
+    ppu->Lcd.bgcnt[i].priority = GET_BITS(val, 0, 2);
+    ppu->Lcd.bgcnt[i].char_base_block = GET_BITS(val, 2, 2);
+    ppu->Lcd.bgcnt[i].mosaic = TEST_BIT(val, 6);
+    ppu->Lcd.bgcnt[i].colors = TEST_BIT(val, 7);
     break;
-  case BG3CNT:
-    ppu->Lcd.bgcnt[3].val = (ppu->Lcd.bgcnt[3].val & 0xFF00) | val;
-    ppu->Lcd.bgcnt[3].priority = val & 0x3;
-    ppu->Lcd.bgcnt[3].char_base_block = (val >> 2) & 0x3;
-    ppu->Lcd.bgcnt[3].mosaic = (val >> 6) & 1;
-    ppu->Lcd.bgcnt[3].colors = (val >> 7) & 1;
-    break;
+  }
   case BG0CNT + 1:
-    ppu->Lcd.bgcnt[0].val = (ppu->Lcd.bgcnt[0].val & 0x00FF) | (val << 8);
-    ppu->Lcd.bgcnt[0].screen_base_block = val & 0x1F;
-    ppu->Lcd.bgcnt[0].aff_wrap = (val >> 5) & 1;
-    ppu->Lcd.bgcnt[0].screen_size = (val >> 6) & 3;
-    break;
   case BG1CNT + 1:
-    ppu->Lcd.bgcnt[1].val = (ppu->Lcd.bgcnt[1].val & 0x00FF) | (val << 8);
-    ppu->Lcd.bgcnt[1].screen_base_block = val & 0x1F;
-    ppu->Lcd.bgcnt[1].aff_wrap = (val >> 5) & 1;
-    ppu->Lcd.bgcnt[1].screen_size = (val >> 6) & 3;
-    break;
   case BG2CNT + 1:
-    ppu->Lcd.bgcnt[2].val = (ppu->Lcd.bgcnt[2].val & 0x00FF) | (val << 8);
-    ppu->Lcd.bgcnt[2].screen_base_block = val & 0x1F;
-    ppu->Lcd.bgcnt[2].aff_wrap = (val >> 5) & 1;
-    ppu->Lcd.bgcnt[2].screen_size = (val >> 6) & 3;
+  case BG3CNT + 1: {
+    int i = (addr - BG0CNT - 1) / 2;
+    ppu->Lcd.bgcnt[i].val = (ppu->Lcd.bgcnt[i].val & 0x00FF) | (val << 8);
+    ppu->Lcd.bgcnt[i].screen_base_block = GET_BITS(val, 0, 5);
+    ppu->Lcd.bgcnt[i].aff_wrap = TEST_BIT(val, 5);
+    ppu->Lcd.bgcnt[i].screen_size = GET_BITS(val, 6, 2);
     break;
-  case BG3CNT + 1:
-    ppu->Lcd.bgcnt[3].val = (ppu->Lcd.bgcnt[3].val & 0x00FF) | (val << 8);
-    ppu->Lcd.bgcnt[3].screen_base_block = val & 0x1F;
-    ppu->Lcd.bgcnt[3].aff_wrap = (val >> 5) & 1;
-    ppu->Lcd.bgcnt[3].screen_size = (val >> 6) & 3;
-    break;
+  }
   case BG0HOFS:
     ppu->Lcd.bghofs[0] = (ppu->Lcd.bghofs[0] & 0xFF00) | val;
     break;
@@ -305,44 +276,6 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   case BG2PD + 1:
     ppu->Lcd.bgpd[0] = (ppu->Lcd.bgpd[0] & 0x00FF) | (val << 8);
     break;
-  case BG2X:
-    ppu->Lcd.bgx[0].current = (ppu->Lcd.bgx[0].current & 0xFFFFFF00) | val;
-    ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-    break;
-  case BG2X + 1:
-    ppu->Lcd.bgx[0].current =
-        (ppu->Lcd.bgx[0].current & 0xFFFF00FF) | (val << 8);
-    ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-    break;
-  case BG2X + 2:
-    ppu->Lcd.bgx[0].current =
-        (ppu->Lcd.bgx[0].current & 0xFF00FFFF) | (val << 16);
-    ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-    break;
-  case BG2X + 3:
-    ppu->Lcd.bgx[0].current =
-        (ppu->Lcd.bgx[0].current & 0x00FFFFFF) | (val << 24);
-    ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-    break;
-  case BG2Y:
-    ppu->Lcd.bgy[0].current = (ppu->Lcd.bgy[0].current & 0xFFFFFF00) | val;
-    ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-    break;
-  case BG2Y + 1:
-    ppu->Lcd.bgy[0].current =
-        (ppu->Lcd.bgy[0].current & 0xFFFF00FF) | (val << 8);
-    ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-    break;
-  case BG2Y + 2:
-    ppu->Lcd.bgy[0].current =
-        (ppu->Lcd.bgy[0].current & 0xFF00FFFF) | (val << 16);
-    ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-    break;
-  case BG2Y + 3:
-    ppu->Lcd.bgy[0].current =
-        (ppu->Lcd.bgy[0].current & 0x00FFFFFF) | (val << 24);
-    ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-    break;
   case BG3PA:
     ppu->Lcd.bgpa[1] = (ppu->Lcd.bgpa[1] & 0xFF00) | val;
     break;
@@ -366,44 +299,6 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     break;
   case BG3PD + 1:
     ppu->Lcd.bgpd[1] = (ppu->Lcd.bgpd[1] & 0x00FF) | (val << 8);
-    break;
-  case BG3X:
-    ppu->Lcd.bgx[1].current = (ppu->Lcd.bgx[1].current & 0xFFFFFF00) | val;
-    ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-    break;
-  case BG3X + 1:
-    ppu->Lcd.bgx[1].current =
-        (ppu->Lcd.bgx[1].current & 0xFFFF00FF) | (val << 8);
-    ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-    break;
-  case BG3X + 2:
-    ppu->Lcd.bgx[1].current =
-        (ppu->Lcd.bgx[1].current & 0xFF00FFFF) | (val << 16);
-    ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-    break;
-  case BG3X + 3:
-    ppu->Lcd.bgx[1].current =
-        (ppu->Lcd.bgx[1].current & 0x00FFFFFF) | (val << 24);
-    ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-    break;
-  case BG3Y:
-    ppu->Lcd.bgy[1].current = (ppu->Lcd.bgy[1].current & 0xFFFFFF00) | val;
-    ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-    break;
-  case BG3Y + 1:
-    ppu->Lcd.bgy[1].current =
-        (ppu->Lcd.bgy[1].current & 0xFFFF00FF) | (val << 8);
-    ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-    break;
-  case BG3Y + 2:
-    ppu->Lcd.bgy[1].current =
-        (ppu->Lcd.bgy[1].current & 0xFF00FFFF) | (val << 16);
-    ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-    break;
-  case BG3Y + 3:
-    ppu->Lcd.bgy[1].current =
-        (ppu->Lcd.bgy[1].current & 0x00FFFFFF) | (val << 24);
-    ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
     break;
   case WIN0H:
     ppu->Lcd.winh[0] = (ppu->Lcd.winh[0] & 0xFF00) | val;
@@ -432,56 +327,56 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   case WININ:
     ppu->Lcd.winin.val = (ppu->Lcd.winin.val & 0xFF00) | val;
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.winin.win0[i] = (val >> i) & 1;
+      ppu->Lcd.winin.win0[i] = TEST_BIT(val, i);
     }
     break;
   case WININ + 1:
     ppu->Lcd.winin.val = (ppu->Lcd.winin.val & 0x00FF) | (val << 8);
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.winin.win1[i] = (val >> i) & 1;
+      ppu->Lcd.winin.win1[i] = TEST_BIT(val, i);
     }
     break;
   case WINOUT:
     ppu->Lcd.winout.val = (ppu->Lcd.winout.val & 0xFF00) | val;
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.winout.win_out[i] = (val >> i) & 1;
+      ppu->Lcd.winout.win_out[i] = TEST_BIT(val, i);
     }
     break;
   case WINOUT + 1:
     ppu->Lcd.winout.val = (ppu->Lcd.winout.val & 0x00FF) | (val << 8);
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.winout.win_obj[i] = (val >> i) & 1;
+      ppu->Lcd.winout.win_obj[i] = TEST_BIT(val, i);
     }
     break;
   case MOSAIC:
-    ppu->Lcd.mosaic.bg_h = val & 0xF;
-    ppu->Lcd.mosaic.bg_v = (val >> 4) & 0xF;
+    ppu->Lcd.mosaic.bg_h = GET_BITS(val, 0, 4);
+    ppu->Lcd.mosaic.bg_v = GET_BITS(val, 4, 4);
     break;
   case MOSAIC + 1:
-    ppu->Lcd.mosaic.obj_h = val & 0xF;
-    ppu->Lcd.mosaic.obj_v = (val >> 4) & 0xF;
+    ppu->Lcd.mosaic.obj_h = GET_BITS(val, 0, 4);
+    ppu->Lcd.mosaic.obj_v = GET_BITS(val, 4, 4);
     break;
   case BLDCNT:
     ppu->Lcd.blendcnt.val = (ppu->Lcd.blendcnt.val & 0xFF00) | val;
-    ppu->Lcd.blendcnt.effect = (val >> 6) & 0x3;
+    ppu->Lcd.blendcnt.effect = GET_BITS(val, 6, 2);
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.blendcnt.targets[0][i] = (val >> i) & 1;
+      ppu->Lcd.blendcnt.targets[0][i] = TEST_BIT(val, i);
     }
     break;
   case BLDCNT + 1:
     ppu->Lcd.blendcnt.val = (ppu->Lcd.blendcnt.val & 0x00FF) | (val << 8);
     for (int i = 0; i < 6; i++) {
-      ppu->Lcd.blendcnt.targets[1][i] = (val >> i) & 1;
+      ppu->Lcd.blendcnt.targets[1][i] = TEST_BIT(val, i);
     }
     break;
   case BLDALPHA:
-    ppu->Lcd.eva = val & 0x1F;
+    ppu->Lcd.eva = GET_BITS(val, 0, 5);
     break;
   case BLDALPHA + 1:
-    ppu->Lcd.evb = val & 0x1F;
+    ppu->Lcd.evb = GET_BITS(val, 0, 5);
     break;
   case BLDY:
-    ppu->Lcd.evy = val & 0x1F;
+    ppu->Lcd.evy = GET_BITS(val, 0, 5);
     break;
   case BLDY + 1:
     break;
@@ -527,21 +422,13 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     break;
 
   case HALTCNT:
-    if (val & 0x80) {
+    if (TEST_BIT(val, 7)) {
       io->power_state = POWER_STATE_STOPPED;
     } else {
       io->power_state = POWER_STATE_HALTED;
     }
     break;
 
-  case WAITCNT:
-    io->waitcnt = (io->waitcnt & 0xFF00) | val;
-    bus_update_waitstates(&gba->bus, io->waitcnt);
-    break;
-  case WAITCNT + 1:
-    io->waitcnt = (io->waitcnt & 0x00FF) | (val << 8);
-    bus_update_waitstates(&gba->bus, io->waitcnt);
-    break;
   default:
     // printf("unhandled io write: %08X\n", addr);
     break;
