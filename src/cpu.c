@@ -7,15 +7,15 @@ void cpu_init(Cpu *cpu) {
   arm_init_lut();
   thumb_init_lut();
 
-  // cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
-  //     0x03007F00;
-  // cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
-  //
-  // cpu->regs[15] = 0x08000000;
-  //
-  // cpu->cpsr |= MODE_SYS | CPSR_I | CPSR_F;
-  //
-  // cpu->spsr = &cpu->cpsr;
+  cpu->regs[13] = cpu->regs_fiq[5] = cpu->regs_abt[0] = cpu->regs_und[0] =
+      0x03007F00;
+  cpu->regs_svc[0] = cpu->regs_irq[0] = 0x03007FE0;
+
+  cpu->regs[15] = 0x08000000;
+
+  cpu->cpsr |= MODE_SYS | CPSR_I | CPSR_F;
+
+  cpu->spsr = &cpu->cpsr;
 
   cpu->regs[15] = 0x00000000;
   cpu->cpsr |= MODE_SVC | CPSR_I | CPSR_F;
@@ -60,10 +60,6 @@ void cpu_set_mode(Cpu *cpu, u32 new_mode) {
     cpu->regs_und[0] = cpu->regs[13];
     cpu->regs_und[1] = cpu->regs[14];
     break;
-    // default:
-    //   cpu->regs_usr[0] = cpu->regs[13];
-    //   cpu->regs_usr[1] = cpu->regs[14];
-    //   break;
   }
 
   if (old_mode == MODE_FIQ && new_mode != MODE_FIQ) {
@@ -117,28 +113,23 @@ void cpu_set_mode(Cpu *cpu, u32 new_mode) {
     cpu->regs[14] = cpu->regs_und[1];
     cpu->spsr = &cpu->spsr_und;
     break;
-    // default:
-    //   cpu->regs[13] = cpu->regs_usr[0];
-    //   cpu->regs[14] = cpu->regs_usr[1];
-    //   cpu->spsr = &cpu->cpsr;
-    //   break;
   }
 
   cpu->cpsr = (cpu->cpsr & ~0x1F) | new_mode;
 }
 
-int cpu_step(Gba *gba) {
-  int cycles = 0;
+void cpu_step(Gba *gba) {
+  int cycles;
 
 #ifdef DEBUG
   printf("%08X: ", PC);
 #endif
   if (CPSR & CPSR_T) {
-    cycles += thumb_step(gba);
+    cycles = thumb_step(gba);
   } else {
-    cycles += arm_step(gba);
+    cycles = arm_step(gba);
   }
-  return cycles;
+  scheduler_step(&gba->scheduler, cycles);
 }
 
 bool check_cond(Cpu *cpu, u32 instr) {
@@ -303,7 +294,6 @@ void set_flags(Cpu *cpu, u32 res, bool carry, bool overflow) {
   flags |= carry << 29;
   flags |= overflow << 28;
   cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z | CPSR_C | CPSR_V)) | flags;
-  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C | CPSR_V)) | flags;
 }
 
 void set_flags_nzc(Cpu *cpu, u32 res, bool carry) {
@@ -312,7 +302,6 @@ void set_flags_nzc(Cpu *cpu, u32 res, bool carry) {
   flags |= (res == 0) << 30;
   flags |= carry << 29;
   cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
-  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z | CPSR_C)) | flags;
 }
 
 void set_flags_nz(Cpu *cpu, u32 res) {
@@ -320,5 +309,4 @@ void set_flags_nz(Cpu *cpu, u32 res) {
   flags |= (res & CPSR_N);
   flags |= (res == 0) << 30;
   cpu->cpsr = (cpu->cpsr & ~(CPSR_N | CPSR_Z)) | flags;
-  // CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
 }

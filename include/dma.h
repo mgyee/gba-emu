@@ -57,6 +57,8 @@ bool dma_active(Dma *dma);
 void dma_step(Gba *gba);
 void dma_activate(Dma *dma, int ch);
 
+void dma_transfer(Gba *gba, int ch);
+
 void dma_control_write(Gba *gba, int ch, u16 val);
 
 void dma_on_vblank(Gba *gba);

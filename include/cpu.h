@@ -78,7 +78,7 @@ struct Cpu {
 void cpu_init(Cpu *cpu);
 void cpu_set_mode(Cpu *cpu, u32 new_mode);
 
-int cpu_step(Gba *gba);
+void cpu_step(Gba *gba);
 
 void arm_init_lut();
 int arm_step(Gba *gba);

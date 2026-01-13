@@ -9,6 +9,7 @@ typedef enum {
   EVENT_TYPE_VBLANK_HBLANK_END,
   EVENT_TYPE_TIMER_OVERFLOW,
   EVENT_TYPE_DMA_ACTIVATE,
+  EVENT_TYPE_IRQ,
 } EventType;
 
 typedef struct Event {

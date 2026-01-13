@@ -22,8 +22,6 @@ typedef enum { ACCESS_NONSEQ = 0, ACCESS_SEQ = 1 } Access;
 struct Bus {
   int wait_16[2][16];
   int wait_32[2][16];
-
-  int cycle_count;
 };
 
 void bus_init(Bus *bus);

@@ -169,38 +169,9 @@ int main(int argc, char *argv[]) {
     scheduler_push_event(scheduler, EVENT_TYPE_FRAME_END,
                          CYCLES_PER_FRAME - total_cycles);
 
-    while (true) {
+    bool frame_done = false;
 
-      while ((int)(scheduler_peek_next_event_time(scheduler) -
-                   scheduler->current_time) > 0) {
-        uint cycles = 0;
-        gba->bus.cycle_count = 0;
-
-        if (dma_active(&gba->dma)) {
-          dma_step(gba);
-        } else {
-          if (gba->io.power_state == POWER_STATE_HALTED) {
-            if (interrupt_pending(gba)) {
-              gba->io.power_state = POWER_STATE_NORMAL;
-            } else {
-              int next_event_time = scheduler_peek_next_event_time(scheduler);
-              scheduler_step(scheduler,
-                             next_event_time - scheduler->current_time);
-              break;
-            }
-          }
-
-          if (interrupt_pending(gba)) {
-            handle_interrupts(gba);
-          }
-          cycles += cpu_step(gba);
-        }
-        cycles += gba->bus.cycle_count;
-
-        scheduler_step(scheduler, cycles);
-      }
-
-      bool frame_done = false;
+    while (!frame_done) {
 
       while ((int)(scheduler->current_time -
                    scheduler_peek_next_event_time(scheduler)) >= 0) {
@@ -231,16 +202,26 @@ int main(int argc, char *argv[]) {
           timer_overflow(gba, (int)(intptr_t)event->ctx, lateness);
           break;
         case EVENT_TYPE_DMA_ACTIVATE:
-          dma_activate(&gba->dma, (int)(intptr_t)event->ctx);
+          dma_transfer(gba, (int)(intptr_t)event->ctx);
+          break;
+        case EVENT_TYPE_IRQ:
+          handle_interrupts(gba);
           break;
         }
         free(event);
         if (frame_done) {
-          goto frame_complete;
+          break;
         }
       }
+
+      if (gba->io.power_state == POWER_STATE_HALTED) {
+        int next_event_time = scheduler_peek_next_event_time(scheduler);
+        scheduler_step(scheduler, next_event_time - scheduler->current_time);
+      } else {
+        cpu_step(gba);
+      }
     }
-  frame_complete:
+
     total_cycles += scheduler->current_time - start_time;
 
     total_cycles -= CYCLES_PER_FRAME;

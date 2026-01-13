@@ -3,6 +3,7 @@
 #include "common.h"
 #include "dma.h"
 #include "gba.h"
+#include "interrupt.h"
 #include "ppu.h"
 #include "scheduler.h"
 #include "timer.h"
@@ -496,9 +497,15 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
   /* Interrupt */
   case IE:
     int_mgr->ie = (int_mgr->ie & 0xFF00) | val;
+    if (interrupt_pending(gba)) {
+      scheduler_push_event(&gba->scheduler, EVENT_TYPE_IRQ, 0);
+    }
     break;
   case IE + 1:
     int_mgr->ie = (int_mgr->ie & 0x00FF) | (val << 8);
+    if (interrupt_pending(gba)) {
+      scheduler_push_event(&gba->scheduler, EVENT_TYPE_IRQ, 0);
+    }
     break;
   case IF:
     int_mgr->if_ &= ~val;
@@ -508,9 +515,15 @@ void io_write8(Gba *gba, u32 addr, u8 val) {
     break;
   case IME:
     int_mgr->ime = (int_mgr->ime & 0xFF00) | val;
+    if (interrupt_pending(gba)) {
+      scheduler_push_event(&gba->scheduler, EVENT_TYPE_IRQ, 0);
+    }
     break;
   case IME + 1:
     int_mgr->ime = (int_mgr->ime & 0x00FF) | (val << 8);
+    if (interrupt_pending(gba)) {
+      scheduler_push_event(&gba->scheduler, EVENT_TYPE_IRQ, 0);
+    }
     break;
 
   case HALTCNT:

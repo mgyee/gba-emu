@@ -117,13 +117,16 @@ void bus_init(Bus *bus) {
 
 static int get_region(u32 address) { return address >> 24; }
 
-static void add_cycles(Bus *bus, Access access, int region, int size) {
+static void add_cycles(Gba *gba, Access access, int region, int size) {
+  Bus *bus = &gba->bus;
+  int cycles = 0;
   region &= 0xF;
   if (size == 1 || size == 2) {
-    bus->cycle_count += bus->wait_16[access & 1][region];
+    cycles = bus->wait_16[access & 1][region];
   } else if (size == 4) {
-    bus->cycle_count += bus->wait_32[access & 1][region];
+    cycles = bus->wait_32[access & 1][region];
   }
+  scheduler_step(&gba->scheduler, cycles);
 }
 
 u8 bus_read8(Gba *gba, u32 address, Access access) {
@@ -174,7 +177,7 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  add_cycles(&gba->bus, access, region, 1);
+  add_cycles(gba, access, region, 1);
   return res;
 }
 
@@ -226,7 +229,7 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  add_cycles(&gba->bus, access, region, 2);
+  add_cycles(gba, access, region, 2);
   return res;
 }
 
@@ -278,7 +281,7 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
     res = 0;
     break;
   }
-  add_cycles(&gba->bus, access, region, 4);
+  add_cycles(gba, access, region, 4);
   return res;
 }
 
@@ -318,7 +321,7 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
   default:
     break;
   }
-  add_cycles(&gba->bus, access, region, 1);
+  add_cycles(gba, access, region, 1);
 }
 void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   u32 offset;
@@ -355,7 +358,7 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   default:
     break;
   }
-  add_cycles(&gba->bus, access, region, 2);
+  add_cycles(gba, access, region, 2);
 }
 
 void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
@@ -393,5 +396,5 @@ void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   default:
     break;
   }
-  add_cycles(&gba->bus, access, region, 4);
+  add_cycles(gba, access, region, 4);
 }

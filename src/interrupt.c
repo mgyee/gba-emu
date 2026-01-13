@@ -9,6 +9,10 @@ void interrupt_init(InterruptManager *int_mgr) {
 
 void inline raise_interrupt(Gba *gba, InterruptType type) {
   gba->int_mgr.if_ |= (1 << type);
+
+  if (gba->int_mgr.ie & (1 << type)) {
+    scheduler_push_event(&gba->scheduler, EVENT_TYPE_IRQ, 0);
+  }
 }
 
 bool inline interrupt_pending(Gba *gba) {
@@ -20,6 +24,10 @@ void handle_interrupts(Gba *gba) {
 
   if ((gba->cpu.cpsr & CPSR_I) == CPSR_I) {
     return;
+  }
+
+  if (gba->io.power_state == POWER_STATE_HALTED) {
+    gba->io.power_state = POWER_STATE_NORMAL;
   }
 
   gba->cpu.spsr_irq = CPSR;
