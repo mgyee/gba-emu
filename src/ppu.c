@@ -125,17 +125,22 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj,
       }
     }
 
-    if (color_idx != 0) {
-      u16 color =
-          ((u16 *)ppu
-               ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
-      buffer[x].color = color;
-      buffer[x].prio = prio;
-      buffer[x].blend = gfx_mode == GFXMODE_BLEND;
-      buffer[x].window = gfx_mode == GFXMODE_WINDOW;
+    if (prio < buffer[x].prio) {
+      buffer[x].mosaic = mosaic;
     }
+    if (color_idx != 0) {
+      if (gfx_mode == GFXMODE_WINDOW) {
+        buffer[x].window = true;
+      } else if (prio < buffer[x].prio) {
+        u16 color =
+            ((u16 *)ppu
+                 ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
 
-    buffer[x].mosaic = mosaic;
+        buffer[x].color = color;
+        buffer[x].prio = prio;
+        buffer[x].blend = gfx_mode == GFXMODE_BLEND;
+      }
+    }
   }
 }
 
@@ -258,18 +263,22 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj,
       }
     }
 
-    if (color_idx != 0) {
-      u16 color =
-          ((u16 *)ppu
-               ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
-
-      buffer[x].color = color;
-      buffer[x].prio = prio;
-      buffer[x].blend = gfx_mode == GFXMODE_BLEND;
-      buffer[x].window = gfx_mode == GFXMODE_WINDOW;
+    if (prio < buffer[x].prio) {
+      buffer[x].mosaic = mosaic;
     }
+    if (color_idx != 0) {
+      if (gfx_mode == GFXMODE_WINDOW) {
+        buffer[x].window = true;
+      } else if (prio < buffer[x].prio) {
+        u16 color =
+            ((u16 *)ppu
+                 ->palram)[0x100 + color_idx + (!color_mode * (pal_bank * 16))];
 
-    buffer[x].mosaic = mosaic;
+        buffer[x].color = color;
+        buffer[x].prio = prio;
+        buffer[x].blend = gfx_mode == GFXMODE_BLEND;
+      }
+    }
   }
 }
 
@@ -280,38 +289,35 @@ static void render_objs(Ppu *ppu, ObjBufferEntry buffer[PIXELS_WIDTH]) {
 
   ObjAttr *oam = (ObjAttr *)ppu->oam;
 
-  for (int prio = 3; prio >= 0; prio--) {
-    for (int i = 127; i >= 0; i--) {
-      ObjAttr *obj = &oam[i];
-      int obj_prio = GET_BITS(obj->attr[2], 10, 2);
-      int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
+  for (int i = 127; i >= 0; i--) {
+    ObjAttr *obj = &oam[i];
+    int gfx_mode = GET_BITS(obj->attr[0], 10, 2);
 
-      if (obj_prio != prio || gfx_mode == GFXMODE_FORBIDDEN) {
-        continue;
-      }
+    if (gfx_mode == GFXMODE_FORBIDDEN) {
+      continue;
+    }
 
-      ObjMode mode = GET_BITS(obj->attr[0], 8, 2);
+    ObjMode mode = GET_BITS(obj->attr[0], 8, 2);
 
-      switch (mode) {
-      case OBJMODE_HIDE:
-        continue;
-      case OBJMODE_REG:
-        render_obj_reg(ppu, obj, buffer);
-        break;
-      case OBJMODE_AFF:
-      case OBJMODE_AFFDBL:
-        render_obj_aff(ppu, obj, buffer);
-        break;
-      }
+    switch (mode) {
+    case OBJMODE_HIDE:
+      continue;
+    case OBJMODE_REG:
+      render_obj_reg(ppu, obj, buffer);
+      break;
+    case OBJMODE_AFF:
+    case OBJMODE_AFFDBL:
+      render_obj_aff(ppu, obj, buffer);
+      break;
+    }
 
-      int mos_h = ppu->Lcd.mosaic.obj_h + 1;
+    int mos_h = ppu->Lcd.mosaic.obj_h + 1;
 
-      if (mos_h > 1) {
-        for (int x = 0; x < PIXELS_WIDTH; x++) {
-          ObjBufferEntry entry = buffer[x];
-          if (entry.mosaic) {
-            buffer[x].color = buffer[x - (x % mos_h)].color;
-          }
+    if (mos_h > 1) {
+      for (int x = 0; x < PIXELS_WIDTH; x++) {
+        ObjBufferEntry entry = buffer[x];
+        if (entry.mosaic) {
+          buffer[x].color = buffer[x - (x % mos_h)].color;
         }
       }
     }
