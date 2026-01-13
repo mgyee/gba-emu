@@ -22,7 +22,7 @@ bool inline interrupt_pending(Gba *gba) {
 
 void handle_interrupts(Gba *gba) {
 
-  if ((gba->cpu.cpsr & CPSR_I) == CPSR_I) {
+  if ((gba->cpu.cpsr & CPSR_I) == CPSR_I || !interrupt_pending(gba)) {
     return;
   }
 
