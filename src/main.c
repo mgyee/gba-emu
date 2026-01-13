@@ -5,9 +5,87 @@
 #include "io.h"
 #include "keypad.h"
 #include "ppu.h"
+#include "scheduler.h"
 #include <SDL.h>
-#include <stdio.h>
-#include <string.h>
+
+bool handle_input(Gba *gba) {
+  SDL_Event event;
+  while (SDL_PollEvent(&event) != 0) {
+    switch (event.type) {
+    case SDL_QUIT:
+      return true;
+    case SDL_KEYDOWN:
+      switch (event.key.keysym.sym) {
+      case SDLK_UP:
+        gba->keypad.keyinput &= ~(1 << BUTTON_UP);
+        break;
+      case SDLK_DOWN:
+        gba->keypad.keyinput &= ~(1 << BUTTON_DOWN);
+        break;
+      case SDLK_LEFT:
+        gba->keypad.keyinput &= ~(1 << BUTTON_LEFT);
+        break;
+      case SDLK_RIGHT:
+        gba->keypad.keyinput &= ~(1 << BUTTON_RIGHT);
+        break;
+      case SDLK_z:
+        gba->keypad.keyinput &= ~(1 << BUTTON_B);
+        break;
+      case SDLK_x:
+        gba->keypad.keyinput &= ~(1 << BUTTON_A);
+        break;
+      case SDLK_a:
+        gba->keypad.keyinput &= ~(1 << BUTTON_L);
+        break;
+      case SDLK_s:
+        gba->keypad.keyinput &= ~(1 << BUTTON_R);
+        break;
+      case SDLK_RETURN:
+        gba->keypad.keyinput &= ~(1 << BUTTON_START);
+        break;
+      case SDLK_BACKSPACE:
+        gba->keypad.keyinput &= ~(1 << BUTTON_SELECT);
+        break;
+      }
+      break;
+    case SDL_KEYUP:
+      switch (event.key.keysym.sym) {
+      case SDLK_UP:
+        gba->keypad.keyinput |= (1 << BUTTON_UP);
+        break;
+      case SDLK_DOWN:
+        gba->keypad.keyinput |= (1 << BUTTON_DOWN);
+        break;
+      case SDLK_LEFT:
+        gba->keypad.keyinput |= (1 << BUTTON_LEFT);
+        break;
+      case SDLK_RIGHT:
+        gba->keypad.keyinput |= (1 << BUTTON_RIGHT);
+        break;
+      case SDLK_z:
+        gba->keypad.keyinput |= (1 << BUTTON_B);
+        break;
+      case SDLK_x:
+        gba->keypad.keyinput |= (1 << BUTTON_A);
+        break;
+      case SDLK_a:
+        gba->keypad.keyinput |= (1 << BUTTON_L);
+        break;
+      case SDLK_s:
+        gba->keypad.keyinput |= (1 << BUTTON_R);
+        break;
+      case SDLK_RETURN:
+        gba->keypad.keyinput |= (1 << BUTTON_START);
+        break;
+      case SDLK_BACKSPACE:
+        gba->keypad.keyinput |= (1 << BUTTON_SELECT);
+        break;
+      }
+      break;
+    }
+  }
+  return false;
+}
 
 int main(int argc, char *argv[]) {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -69,86 +147,22 @@ int main(int argc, char *argv[]) {
   Uint32 last_time = frame_start_time;
   char fps_buffer[32];
 
+  int total_cycles = 0;
   while (true) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event) != 0) {
-      switch (event.type) {
-      case SDL_QUIT:
-        goto shutdown;
-      case SDL_KEYDOWN:
-        switch (event.key.keysym.sym) {
-        case SDLK_UP:
-          gba->keypad.keyinput &= ~(1 << BUTTON_UP);
-          break;
-        case SDLK_DOWN:
-          gba->keypad.keyinput &= ~(1 << BUTTON_DOWN);
-          break;
-        case SDLK_LEFT:
-          gba->keypad.keyinput &= ~(1 << BUTTON_LEFT);
-          break;
-        case SDLK_RIGHT:
-          gba->keypad.keyinput &= ~(1 << BUTTON_RIGHT);
-          break;
-        case SDLK_z:
-          gba->keypad.keyinput &= ~(1 << BUTTON_B);
-          break;
-        case SDLK_x:
-          gba->keypad.keyinput &= ~(1 << BUTTON_A);
-          break;
-        case SDLK_a:
-          gba->keypad.keyinput &= ~(1 << BUTTON_L);
-          break;
-        case SDLK_s:
-          gba->keypad.keyinput &= ~(1 << BUTTON_R);
-          break;
-        case SDLK_RETURN:
-          gba->keypad.keyinput &= ~(1 << BUTTON_START);
-          break;
-        case SDLK_BACKSPACE:
-          gba->keypad.keyinput &= ~(1 << BUTTON_SELECT);
-          break;
-        }
-        break;
-      case SDL_KEYUP:
-        switch (event.key.keysym.sym) {
-        case SDLK_UP:
-          gba->keypad.keyinput |= (1 << BUTTON_UP);
-          break;
-        case SDLK_DOWN:
-          gba->keypad.keyinput |= (1 << BUTTON_DOWN);
-          break;
-        case SDLK_LEFT:
-          gba->keypad.keyinput |= (1 << BUTTON_LEFT);
-          break;
-        case SDLK_RIGHT:
-          gba->keypad.keyinput |= (1 << BUTTON_RIGHT);
-          break;
-        case SDLK_z:
-          gba->keypad.keyinput |= (1 << BUTTON_B);
-          break;
-        case SDLK_x:
-          gba->keypad.keyinput |= (1 << BUTTON_A);
-          break;
-        case SDLK_a:
-          gba->keypad.keyinput |= (1 << BUTTON_L);
-          break;
-        case SDLK_s:
-          gba->keypad.keyinput |= (1 << BUTTON_R);
-          break;
-        case SDLK_RETURN:
-          gba->keypad.keyinput |= (1 << BUTTON_START);
-          break;
-        case SDLK_BACKSPACE:
-          gba->keypad.keyinput |= (1 << BUTTON_SELECT);
-          break;
-        }
-        break;
-      }
-    }
-    int total_cycles = 0;
-    while (total_cycles < CYCLES_PER_FRAME) {
-      int cycles = 0;
 
+    if (handle_input(gba)) {
+      goto shutdown;
+    }
+
+    Scheduler *scheduler = &gba->scheduler;
+
+    uint start_time = scheduler->current_time;
+    scheduler_push_event(scheduler, EVENT_TYPE_FRAME_END,
+                         CYCLES_PER_FRAME - total_cycles);
+
+    while (true) {
+
+      uint cycles = 0;
       gba->bus.cycle_count = 0;
 
       if (dma_active(&gba->dma)) {
@@ -157,25 +171,67 @@ int main(int argc, char *argv[]) {
         if (gba->io.power_state == POWER_STATE_HALTED) {
           if (interrupt_pending(gba)) {
             gba->io.power_state = POWER_STATE_NORMAL;
+          } else {
+            int next_event_time = scheduler_peek_next_event_time(scheduler);
+            scheduler_step(scheduler,
+                           next_event_time - scheduler->current_time);
+            break;
           }
         }
 
-        if (gba->io.power_state == POWER_STATE_HALTED) {
-          cycles += 16;
-        } else {
-          if (interrupt_pending(gba)) {
-            handle_interrupts(gba);
-          }
-          cycles += cpu_step(gba);
+        if (interrupt_pending(gba)) {
+          handle_interrupts(gba);
         }
+        cycles += cpu_step(gba);
       }
-
       cycles += gba->bus.cycle_count;
 
-      ppu_step(gba, cycles);
-      timer_step(gba, cycles);
-      total_cycles += cycles;
+      scheduler_step(scheduler, cycles);
+
+      bool frame_done = false;
+
+      while ((int)(scheduler->current_time -
+                   scheduler_peek_next_event_time(scheduler)) >= 0) {
+
+        Event *event = scheduler_pop_event(scheduler);
+        if (!event) {
+          break;
+        }
+        uint lateness = scheduler->current_time - event->scheduled_time;
+        switch (event->type) {
+        case EVENT_TYPE_FRAME_END:
+          frame_done = true;
+          break;
+
+        case EVENT_TYPE_HBLANK_START:
+          ppu_hblank_start(gba, lateness);
+          break;
+        case EVENT_TYPE_HBLANK_END:
+          ppu_hblank_end(gba, lateness);
+          break;
+        case EVENT_TYPE_VBLANK_HBLANK_START:
+          ppu_vblank_hblank_start(gba, lateness);
+          break;
+        case EVENT_TYPE_VBLANK_HBLANK_END:
+          ppu_vblank_hblank_end(gba, lateness);
+          break;
+        case EVENT_TYPE_TIMER_OVERFLOW:
+          // timer_overflow(gba, event->ctx);
+          break;
+        case EVENT_TYPE_DMA_ACTIVATE:
+          // dma_activate(gba, event->ctx);
+          break;
+        }
+        free(event);
+        if (frame_done) {
+          goto frame_complete;
+        }
+      }
     }
+  frame_complete:
+    total_cycles += scheduler->current_time - start_time;
+
+    total_cycles -= CYCLES_PER_FRAME;
 
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);

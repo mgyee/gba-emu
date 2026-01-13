@@ -12,6 +12,12 @@
 #define BACKDROP_IDX 5
 #define WIN_BLD_IDX 5
 
+#define CYCLES_PER_SCANLINE 1232
+#define SCANLINES_PER_FRAME 228
+#define VISIBLE_SCANLINES 160
+#define H_VISIBLE_CYCLES 960
+#define H_BLANK_CYCLES 272
+
 typedef enum {
   NONE,
   ALPHA,
@@ -153,4 +159,10 @@ typedef struct {
 typedef enum { OBJMODE_REG, OBJMODE_AFF, OBJMODE_HIDE, OBJMODE_AFFDBL } ObjMode;
 
 void ppu_init(Ppu *ppu);
+
+void ppu_hblank_start(Gba *gba, uint lateness);
+void ppu_hblank_end(Gba *gba, uint lateness);
+void ppu_vblank_hblank_start(Gba *gba, uint lateness);
+void ppu_vblank_hblank_end(Gba *gba, uint lateness);
+
 void ppu_step(Gba *gba, int cycles);

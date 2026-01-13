@@ -9,6 +9,7 @@
 #include "keypad.h"
 #include "ppu.h"
 #include "rom.h"
+#include "scheduler.h"
 #include "timer.h"
 
 struct Gba {
@@ -20,7 +21,7 @@ struct Gba {
 
   Bus bus;
 
-  // scheduler
+  Scheduler scheduler;
 
   Io io;
 

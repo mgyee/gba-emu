@@ -22,8 +22,11 @@ bool gba_init(Gba *gba, const char *bios_path, const char *rom_path) {
   dma_init(&gba->dma);
   timer_init(&gba->tmr_mgr);
   interrupt_init(&gba->int_mgr);
+  scheduler_init(&gba->scheduler);
 
   arm_fetch(gba);
+  scheduler_push_event(&gba->scheduler, EVENT_TYPE_HBLANK_START,
+                       H_VISIBLE_CYCLES);
   return true;
 }
 

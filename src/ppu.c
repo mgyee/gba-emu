@@ -1,14 +1,9 @@
 #include "ppu.h"
 #include "common.h"
 #include "gba.h"
+#include "scheduler.h"
 #include <assert.h>
 #include <string.h>
-
-#define CYCLES_PER_SCANLINE 1232
-#define SCANLINES_PER_FRAME 228
-#define VISIBLE_SCANLINES 160
-#define H_VISIBLE_CYCLES 960
-#define H_BLANK_CYCLES 272
 
 // [Shape][Size] -> {Width, Height}
 static const int sizes[3][4][2] = {{{8, 8}, {16, 16}, {32, 32}, {64, 64}},
@@ -733,79 +728,188 @@ static void render_scanline(Ppu *ppu) {
   }
 }
 
-void ppu_step(Gba *gba, int cycles) {
+void update_vcounter(Gba *gba) {
   Ppu *ppu = &gba->ppu;
-  ppu->cycle += cycles;
 
-  while (ppu->cycle >= H_VISIBLE_CYCLES) {
+  if (ppu->Lcd.vcount == ppu->Lcd.dispstat.vcount_setting) {
+    ppu->Lcd.dispstat.vcounter = 1;
+    ppu->Lcd.dispstat.val |= 4;
 
-    if (!ppu->Lcd.dispstat.hblank) {
-
-      if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
-        render_scanline(ppu);
-      }
-
-      ppu->Lcd.dispstat.hblank = 1;
-      ppu->Lcd.dispstat.val |= 2;
-
-      if (ppu->Lcd.dispstat.hblank_irq) {
-        raise_interrupt(gba, INT_HBLANK);
-      }
-      if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
-        dma_on_hblank(gba);
-      }
+    if (ppu->Lcd.dispstat.vcounter_irq) {
+      raise_interrupt(gba, INT_VCOUNT);
     }
-    if (ppu->cycle < CYCLES_PER_SCANLINE) {
-      break;
-    }
-    ppu->cycle -= CYCLES_PER_SCANLINE;
-
-    ppu->Lcd.dispstat.hblank = 0;
-    ppu->Lcd.dispstat.val &= ~2;
-
-    if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
-
-      ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
-      ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
-      ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
-      ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
-    } else if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
-      ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
-      ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
-      ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
-      ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
-    }
-
-    ppu->Lcd.vcount++;
-
-    if (ppu->Lcd.vcount >= SCANLINES_PER_FRAME) {
-      ppu->Lcd.vcount = 0;
-    }
-
-    if (ppu->Lcd.vcount == ppu->Lcd.dispstat.vcount_setting) {
-      ppu->Lcd.dispstat.vcounter = 1;
-      ppu->Lcd.dispstat.val |= 4;
-
-      if (ppu->Lcd.dispstat.vcounter_irq) {
-        raise_interrupt(gba, INT_VCOUNT);
-      }
-    } else {
-      ppu->Lcd.dispstat.vcounter = 0;
-      ppu->Lcd.dispstat.val &= ~4;
-    }
-
-    if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
-
-      ppu->Lcd.dispstat.vblank = 1;
-      ppu->Lcd.dispstat.val |= 1;
-      if (ppu->Lcd.dispstat.vblank_irq) {
-        raise_interrupt(gba, INT_VBLANK);
-      }
-      dma_on_vblank(gba);
-
-    } else if (ppu->Lcd.vcount == 0) {
-      ppu->Lcd.dispstat.vblank = 0;
-      ppu->Lcd.dispstat.val &= ~1;
-    }
+  } else {
+    ppu->Lcd.dispstat.vcounter = 0;
+    ppu->Lcd.dispstat.val &= ~4;
   }
 }
+
+void ppu_hblank_start(Gba *gba, uint lateness) {
+  Ppu *ppu = &gba->ppu;
+
+  render_scanline(ppu);
+
+  ppu->Lcd.dispstat.hblank = 1;
+  ppu->Lcd.dispstat.val |= 2;
+
+  if (ppu->Lcd.dispstat.hblank_irq) {
+    raise_interrupt(gba, INT_HBLANK);
+  }
+  dma_on_hblank(gba);
+
+  scheduler_push_event(&gba->scheduler, EVENT_TYPE_HBLANK_END,
+                       H_BLANK_CYCLES - lateness);
+}
+
+void ppu_hblank_end(Gba *gba, uint lateness) {
+  Ppu *ppu = &gba->ppu;
+
+  ppu->Lcd.dispstat.hblank = 0;
+  ppu->Lcd.dispstat.val &= ~2;
+
+  ppu->Lcd.vcount++;
+
+  update_vcounter(gba);
+
+  if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
+    ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
+    ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
+    ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
+    ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
+
+    ppu->Lcd.dispstat.vblank = 1;
+    ppu->Lcd.dispstat.val |= 1;
+    if (ppu->Lcd.dispstat.vblank_irq) {
+      raise_interrupt(gba, INT_VBLANK);
+    }
+    dma_on_vblank(gba);
+
+    scheduler_push_event(&gba->scheduler, EVENT_TYPE_VBLANK_HBLANK_START,
+                         H_VISIBLE_CYCLES - lateness);
+  } else {
+    ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
+    ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
+    ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
+    ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
+
+    scheduler_push_event(&gba->scheduler, EVENT_TYPE_HBLANK_START,
+                         H_VISIBLE_CYCLES - lateness);
+  }
+}
+
+void ppu_vblank_hblank_start(Gba *gba, uint lateness) {
+  Ppu *ppu = &gba->ppu;
+
+  ppu->Lcd.dispstat.hblank = 1;
+  ppu->Lcd.dispstat.val |= 2;
+
+  if (ppu->Lcd.dispstat.hblank_irq) {
+    raise_interrupt(gba, INT_HBLANK);
+  }
+
+  scheduler_push_event(&gba->scheduler, EVENT_TYPE_VBLANK_HBLANK_END,
+                       H_BLANK_CYCLES - lateness);
+}
+
+void ppu_vblank_hblank_end(Gba *gba, uint lateness) {
+  Ppu *ppu = &gba->ppu;
+
+  ppu->Lcd.dispstat.hblank = 0;
+  ppu->Lcd.dispstat.val &= ~2;
+
+  ppu->Lcd.vcount++;
+
+  if (ppu->Lcd.vcount >= SCANLINES_PER_FRAME) {
+    ppu->Lcd.vcount = 0;
+  }
+
+  update_vcounter(gba);
+
+  if (ppu->Lcd.vcount == 0) {
+    ppu->Lcd.dispstat.vblank = 0;
+    ppu->Lcd.dispstat.val &= ~1;
+
+    scheduler_push_event(&gba->scheduler, EVENT_TYPE_HBLANK_START,
+                         H_VISIBLE_CYCLES - lateness);
+  } else {
+    scheduler_push_event(&gba->scheduler, EVENT_TYPE_VBLANK_HBLANK_START,
+                         H_VISIBLE_CYCLES - lateness);
+  }
+}
+
+// void ppu_step(Gba *gba, int cycles) {
+//   Ppu *ppu = &gba->ppu;
+//   ppu->cycle += cycles;
+//
+//   while (ppu->cycle >= H_VISIBLE_CYCLES) {
+//
+//     if (!ppu->Lcd.dispstat.hblank) {
+//
+//       if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+//         render_scanline(ppu);
+//       }
+//
+//       ppu->Lcd.dispstat.hblank = 1;
+//       ppu->Lcd.dispstat.val |= 2;
+//
+//       if (ppu->Lcd.dispstat.hblank_irq) {
+//         raise_interrupt(gba, INT_HBLANK);
+//       }
+//       if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+//         dma_on_hblank(gba);
+//       }
+//     }
+//     if (ppu->cycle < CYCLES_PER_SCANLINE) {
+//       break;
+//     }
+//     ppu->cycle -= CYCLES_PER_SCANLINE;
+//
+//     ppu->Lcd.dispstat.hblank = 0;
+//     ppu->Lcd.dispstat.val &= ~2;
+//
+//     if (ppu->Lcd.vcount < VISIBLE_SCANLINES) {
+//
+//       ppu->Lcd.bgx[0].internal += ppu->Lcd.bgpb[0];
+//       ppu->Lcd.bgy[0].internal += ppu->Lcd.bgpd[0];
+//       ppu->Lcd.bgx[1].internal += ppu->Lcd.bgpb[1];
+//       ppu->Lcd.bgy[1].internal += ppu->Lcd.bgpd[1];
+//     } else if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
+//       ppu->Lcd.bgx[0].internal = ppu->Lcd.bgx[0].current;
+//       ppu->Lcd.bgy[0].internal = ppu->Lcd.bgy[0].current;
+//       ppu->Lcd.bgx[1].internal = ppu->Lcd.bgx[1].current;
+//       ppu->Lcd.bgy[1].internal = ppu->Lcd.bgy[1].current;
+//     }
+//
+//     ppu->Lcd.vcount++;
+//
+//     if (ppu->Lcd.vcount >= SCANLINES_PER_FRAME) {
+//       ppu->Lcd.vcount = 0;
+//     }
+//
+//     if (ppu->Lcd.vcount == ppu->Lcd.dispstat.vcount_setting) {
+//       ppu->Lcd.dispstat.vcounter = 1;
+//       ppu->Lcd.dispstat.val |= 4;
+//
+//       if (ppu->Lcd.dispstat.vcounter_irq) {
+//         raise_interrupt(gba, INT_VCOUNT);
+//       }
+//     } else {
+//       ppu->Lcd.dispstat.vcounter = 0;
+//       ppu->Lcd.dispstat.val &= ~4;
+//     }
+//
+//     if (ppu->Lcd.vcount == VISIBLE_SCANLINES) {
+//
+//       ppu->Lcd.dispstat.vblank = 1;
+//       ppu->Lcd.dispstat.val |= 1;
+//       if (ppu->Lcd.dispstat.vblank_irq) {
+//         raise_interrupt(gba, INT_VBLANK);
+//       }
+//       dma_on_vblank(gba);
+//
+//     } else if (ppu->Lcd.vcount == 0) {
+//       ppu->Lcd.dispstat.vblank = 0;
+//       ppu->Lcd.dispstat.val &= ~1;
+//     }
+//   }
+// }
