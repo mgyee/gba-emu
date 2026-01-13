@@ -104,6 +104,11 @@ static void render_obj_reg(Ppu *ppu, ObjAttr *obj,
 
     int curr_tile = tile_start + (1 + color_mode) * tile_x;
 
+    if (ppu->Lcd.dispcnt.mode >= 3 && curr_tile < 512) {
+      buffer[x].mosaic = mosaic;
+      continue;
+    }
+
     int tile_addr = ((curr_tile % 1024) * 32);
 
     int color_idx;
@@ -231,6 +236,11 @@ static void render_obj_aff(Ppu *ppu, ObjAttr *obj,
     int tile_start = tile_idx + (tile_y * tile_stride);
 
     int curr_tile = tile_start + (1 + color_mode) * tile_x;
+
+    if (ppu->Lcd.dispcnt.mode >= 3 && curr_tile < 512) {
+      buffer[x].mosaic = mosaic;
+      continue;
+    }
 
     int tile_addr = ((curr_tile % 1024) * 32);
 
