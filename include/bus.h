@@ -29,6 +29,9 @@ struct Bus {
 };
 
 void bus_init(Bus *bus);
+
+int get_region(u32 address);
+
 u8 bus_read8(Gba *gba, u32 address, Access access);
 void bus_write8(Gba *gba, u32 address, u8 value, Access access);
 u16 bus_read16(Gba *gba, u32 address, Access access);

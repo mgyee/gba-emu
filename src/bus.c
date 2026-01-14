@@ -116,7 +116,7 @@ void bus_init(Bus *bus) {
   bus_init_waitstates(bus);
 }
 
-static int get_region(u32 address) { return address >> 24; }
+int get_region(u32 address) { return address >> 24; }
 
 static void add_cycles(Gba *gba, Access access, int region, int size) {
   Bus *bus = &gba->bus;
