@@ -1,4 +1,5 @@
 #include "bus.h"
+#include "cpu.h"
 #include "gba.h"
 #include "io.h"
 #include <stdio.h>
@@ -134,8 +135,9 @@ u32 bus_read_bios(Gba *gba, u32 address) {
   if (PC < BIOS_SIZE) {
     gba->bus.bios_last_load = read_mem32(gba->bios, offset);
   }
-  return ROR(&gba->cpu, gba->bus.bios_last_load, (address & 3) * 8, false)
-      .value;
+  ShiftRes sh_res = barrel_shifter(
+      &gba->cpu, SHIFT_ROR, gba->bus.bios_last_load, (address & 3) * 8, false);
+  return sh_res.value;
 }
 
 u8 bus_read8(Gba *gba, u32 address, Access access) {
@@ -192,6 +194,7 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
 u16 bus_read16(Gba *gba, u32 address, Access access) {
   u16 res;
   u32 offset;
+  address &= ~1;
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
@@ -243,6 +246,7 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
 u32 bus_read32(Gba *gba, u32 address, Access access) {
   u32 res;
   u32 offset;
+  address &= ~3;
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
@@ -331,6 +335,7 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
 }
 void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   u32 offset;
+  address &= ~1;
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
@@ -369,6 +374,7 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
 
 void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   u32 offset;
+  address &= ~3;
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:

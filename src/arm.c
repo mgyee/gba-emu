@@ -208,12 +208,12 @@ int arm_swp(Gba *gba, u32 instr) {
   } else {
     // word
     u32 addr = REG(rn);
-    val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
+    val = bus_read32(gba, addr, ACCESS_NONSEQ);
     u32 rot = (addr & 3) * 8;
     if (rot) {
       val = (val >> rot) | (val << (32 - rot));
     }
-    bus_write32(gba, addr & ~3, REG(rm), ACCESS_NONSEQ);
+    bus_write32(gba, addr, REG(rm), ACCESS_NONSEQ);
   }
 
   REG(rd) = val;
@@ -294,7 +294,7 @@ int arm_ldrh_strh(Gba *gba, u32 instr) {
     // LDRH
     u16 val;
     if (addr & 1) {
-      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ);
+      val = bus_read16(gba, addr, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(&gba->cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
@@ -306,7 +306,7 @@ int arm_ldrh_strh(Gba *gba, u32 instr) {
     cycles = 1;
   } else {
     // STRH
-    bus_write16(gba, addr & ~1, REG(rd), ACCESS_NONSEQ);
+    bus_write16(gba, addr, REG(rd), ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   }
 
@@ -385,7 +385,7 @@ int arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
   if (h) {
     // Halfword
     if (addr & 1) {
-      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ) >> 8;
+      val = bus_read16(gba, addr, ACCESS_NONSEQ) >> 8;
       if (val & 0x80) {
         val |= 0xFFFFFF00;
       }
@@ -836,7 +836,7 @@ static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
       val = bus_read8(gba, addr, ACCESS_NONSEQ);
     } else {
       // LDR
-      val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
+      val = bus_read32(gba, addr, ACCESS_NONSEQ);
       u32 rot = (addr & 3) * 8;
       if (rot) {
         val = (val >> rot) | (val << (32 - rot));
@@ -856,7 +856,7 @@ static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
       bus_write8(gba, addr, val & 0xFF, ACCESS_NONSEQ);
     } else {
       // STR
-      bus_write32(gba, addr & ~3, val, ACCESS_NONSEQ);
+      bus_write32(gba, addr, val, ACCESS_NONSEQ);
     }
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   }

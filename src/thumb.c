@@ -406,7 +406,7 @@ static int thumb_ldr_str_reg(Gba *gba, u16 instr) {
     if (b) {
       REG(rd) = bus_read8(gba, addr, ACCESS_NONSEQ);
     } else {
-      u32 val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
+      u32 val = bus_read32(gba, addr, ACCESS_NONSEQ);
       u32 rot = (addr & 3) * 8;
       if (rot) {
         val = (val >> rot) | (val << (32 - rot));
@@ -442,7 +442,7 @@ static int thumb_ldrh_strh_reg(Gba *gba, u16 instr) {
     // LDRH
     u16 val;
     if (addr & 1) {
-      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ);
+      val = bus_read16(gba, addr, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(&gba->cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
@@ -473,7 +473,7 @@ static int thumb_ldrsh_ldrsb_reg(Gba *gba, u16 instr) {
   if (h) {
     // LDRSH
     if (addr & 1) {
-      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ) >> 8;
+      val = bus_read16(gba, addr, ACCESS_NONSEQ) >> 8;
       if (val & 0x80) {
         val |= 0xFFFFFF00;
       }
@@ -514,7 +514,7 @@ static int thumb_ldr_str_imm(Gba *gba, u16 instr) {
 #endif
 
   if (l) {
-    u32 val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
+    u32 val = bus_read32(gba, addr, ACCESS_NONSEQ);
     u32 rot = (addr & 3) * 8;
     if (rot) {
       val = (val >> rot) | (val << (32 - rot));
@@ -569,7 +569,7 @@ static int thumb_ldrh_strh_imm(Gba *gba, u16 instr) {
   if (l) {
     u16 val;
     if (addr & 1) {
-      val = bus_read16(gba, addr & ~1, ACCESS_NONSEQ);
+      val = bus_read16(gba, addr, ACCESS_NONSEQ);
       ShiftRes sh_res = barrel_shifter(&gba->cpu, SHIFT_ROR, val, 8, true);
       REG(rd) = sh_res.value;
     } else {
@@ -596,7 +596,7 @@ static int thumb_ldr_str_sp_rel(Gba *gba, u16 instr) {
 #endif
 
   if (l) {
-    u32 val = bus_read32(gba, addr & ~3, ACCESS_NONSEQ);
+    u32 val = bus_read32(gba, addr, ACCESS_NONSEQ);
     u32 rot = (addr & 3) * 8;
     if (rot) {
       val = (val >> rot) | (val << (32 - rot));
