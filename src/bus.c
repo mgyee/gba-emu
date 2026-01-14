@@ -129,14 +129,22 @@ static void add_cycles(Gba *gba, Access access, int region, int size) {
   scheduler_step(&gba->scheduler, cycles);
 }
 
+u32 bus_read_bios(Gba *gba, u32 address) {
+  u32 offset = address & ~3;
+  if (PC < BIOS_SIZE) {
+    gba->bus.bios_last_load = read_mem32(gba->bios, offset);
+  }
+  return ROR(&gba->cpu, gba->bus.bios_last_load, (address & 3) * 8, false)
+      .value;
+}
+
 u8 bus_read8(Gba *gba, u32 address, Access access) {
   u8 res;
   u32 offset;
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
-    offset = address;
-    res = read_mem8(gba->bios, offset);
+    res = bus_read_bios(gba, address);
     break;
   case REGION_EWRAM:
     offset = address & 0x3FFFF;
@@ -187,8 +195,7 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
-    offset = address;
-    res = read_mem16(gba->bios, offset);
+    res = bus_read_bios(gba, address);
     break;
   case REGION_EWRAM:
     offset = address & 0x3FFFF;
@@ -239,8 +246,7 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
   int region = get_region(address);
   switch (region) {
   case REGION_BIOS:
-    offset = address;
-    res = read_mem32(gba->bios, offset);
+    res = bus_read_bios(gba, address);
     break;
   case REGION_EWRAM:
     offset = address & 0x3FFFF;

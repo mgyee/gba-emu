@@ -19,9 +19,13 @@ typedef enum { ACCESS_NONSEQ = 0, ACCESS_SEQ = 1 } Access;
 #define REGION_SRAM 0xE
 #define REGION_UNUSED 0xF
 
+#define BIOS_SIZE 0x4000
+
 struct Bus {
   int wait_16[2][16];
   int wait_32[2][16];
+
+  u32 bios_last_load;
 };
 
 void bus_init(Bus *bus);

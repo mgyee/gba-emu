@@ -53,11 +53,11 @@ void dma_transfer(Gba *gba, int ch) {
     u32 src = channel->internal_src_addr;
     u32 dst = channel->internal_dst_addr;
     if (control->chunk_size == 4) {
-      u32 data = bus_read32(gba, src, access);
-      bus_write32(gba, dst, data, access);
+      u32 data = bus_read32(gba, src & ~3, access);
+      bus_write32(gba, dst & ~3, data, access);
     } else {
-      u16 data = bus_read16(gba, src, access);
-      bus_write16(gba, dst, data, access);
+      u16 data = bus_read16(gba, src & ~1, access);
+      bus_write16(gba, dst & ~1, data, access);
     }
 
     // channel->access = ACCESS_SEQ;

@@ -1118,7 +1118,7 @@ int arm_swi(Gba *gba, u32 instr) {
   CPSR &= ~CPSR_T;
   CPSR |= CPSR_I;
   LR = PC - 8;
-  PC = 0x8;
+  PC = 0x08;
   arm_fetch(gba);
   return 0;
 }
