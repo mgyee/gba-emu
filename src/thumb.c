@@ -384,8 +384,7 @@ static void thumb_ldr_pc_rel(Gba *gba, u16 instr) {
 #endif
 
   u32 addr = ((PC - 2) & ~2) + (offset << 2);
-  u32 val = bus_read32(gba, addr, ACCESS_NONSEQ);
-  REG(rd) = val;
+  REG(rd) = bus_read32(gba, addr, ACCESS_NONSEQ);
 
   scheduler_step(&gba->scheduler, 1);
   gba->cpu.next_fetch_access = ACCESS_NONSEQ;

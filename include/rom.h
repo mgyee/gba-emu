@@ -4,6 +4,7 @@
 
 typedef struct {
   u8 *data;
+  u32 size;
   char *title;
   char *code;
   char *maker;

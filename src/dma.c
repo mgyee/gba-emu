@@ -35,7 +35,6 @@ void dma_on_hblank(Gba *gba) {
 void dma_transfer(Gba *gba, int ch) {
   Dma *dma = &gba->dma;
   DmaChannel *channel = &dma->channels[ch];
-  // Access access = channel->access;
   DmaControl *control = &channel->control;
 
   Access access = ACCESS_NONSEQ;
@@ -64,15 +63,16 @@ void dma_transfer(Gba *gba, int ch) {
 
   for (; channel->internal_count > 0; channel->internal_count--) {
     if (control->chunk_size == 4) {
-      if (src >= 0x1FFFFFF) {
+      if (src >= 0x02000000) {
         dma->last_load = bus_read32(gba, src, access);
       }
       bus_write32(gba, dst, dma->last_load, access);
     } else {
-      if (src >= 0x1FFFFFF) {
+      if (src >= 0x02000000) {
         dma->last_load = bus_read16(gba, src, access);
+        dma->last_load |= dma->last_load << 16;
       }
-      bus_write16(gba, dst, dma->last_load, access);
+      bus_write16(gba, dst, dma->last_load >> (8 * (dst & 2)), access);
     }
 
     access = ACCESS_SEQ;
@@ -163,7 +163,7 @@ void dma_control_write(Gba *gba, int ch, u16 val) {
 
     if (control->timing == TIMING_MODE_NOW) {
       dma->channels[ch].access = ACCESS_NONSEQ;
-      scheduler_push_event_ctx(&gba->scheduler, EVENT_TYPE_DMA_ACTIVATE, 2,
+      scheduler_push_event_ctx(&gba->scheduler, EVENT_TYPE_DMA_ACTIVATE, 0,
                                (void *)(intptr_t)ch);
     }
   }

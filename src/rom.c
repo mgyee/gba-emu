@@ -12,6 +12,7 @@ bool load_rom(Rom *rom, const char *filename) {
   rewind(file);
   rom->data = malloc(ROM_MAX_SIZE);
   size_t read = fread(rom->data, 1, file_size, file);
+  rom->size = (u32)file_size;
   rom->title = strndup((char *)(rom->data + 0xA0), 12);
   rom->code = strndup((char *)(rom->data + 0xAC), 4);
   rom->maker = strndup((char *)(rom->data + 0xB0), 2);
