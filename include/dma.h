@@ -50,6 +50,7 @@ typedef struct {
 typedef struct {
   DmaChannel channels[4];
   int active;
+  u32 last_load;
 } Dma;
 
 void dma_init(Dma *dma);
