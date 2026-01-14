@@ -81,12 +81,12 @@ void cpu_set_mode(Cpu *cpu, u32 new_mode);
 void cpu_step(Gba *gba);
 
 void arm_init_lut();
-int arm_step(Gba *gba);
+void arm_step(Gba *gba);
 void arm_fetch(Gba *gba);
 u32 arm_fetch_next(Gba *gba);
 
 void thumb_init_lut();
-int thumb_step(Gba *gba);
+void thumb_step(Gba *gba);
 void thumb_fetch(Gba *gba);
 u16 thumb_fetch_next(Gba *gba);
 

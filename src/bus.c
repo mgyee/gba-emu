@@ -116,7 +116,7 @@ void bus_init(Bus *bus) {
   bus_init_waitstates(bus);
 }
 
-int get_region(u32 address) { return address >> 24; }
+inline int get_region(u32 address) { return address >> 24; }
 
 static void add_cycles(Gba *gba, Access access, int region, int size) {
   Bus *bus = &gba->bus;
@@ -182,6 +182,9 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
   case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
     res = read_mem8(gba->rom.data, offset);
+    if ((address & 0x1FFFF) == 0) {
+      access = ACCESS_NONSEQ;
+    }
     break;
   default:
     res = 0;
@@ -234,6 +237,9 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
   case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
     res = read_mem16(gba->rom.data, offset);
+    if ((address & 0x1FFFF) == 0) {
+      access = ACCESS_NONSEQ;
+    }
     break;
   default:
     res = 0;
@@ -286,6 +292,9 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
   case REGION_CART_WS2_B:
     offset = address & 0x1FFFFFF;
     res = read_mem32(gba->rom.data, offset);
+    if ((address & 0x1FFFF) == 0) {
+      access = ACCESS_NONSEQ;
+    }
     break;
   default:
     res = 0;

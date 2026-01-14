@@ -1,9 +1,10 @@
 #include "bus.h"
 #include "cpu.h"
 #include "gba.h"
+#include "scheduler.h"
 #include <stdio.h>
 
-typedef int (*ArmInstr)(Gba *gba, u32 instr);
+typedef void (*ArmInstr)(Gba *gba, u32 instr);
 
 static ArmInstr arm_lut[4096];
 
@@ -37,17 +38,17 @@ void arm_fetch(Gba *gba) {
   PC += 8;
 }
 
-int arm_step(Gba *gba) {
+void arm_step(Gba *gba) {
   u32 instr = arm_fetch_next(gba);
 
   if (!check_cond(&gba->cpu, instr)) {
 #ifdef DEBUG
     printf("%08X: Cond not met\n", instr);
 #endif
-    return 0;
+    return;
   }
   int index = arm_decode(instr);
-  return arm_lut[index](gba, instr);
+  arm_lut[index](gba, instr);
 }
 
 typedef enum {
@@ -69,17 +70,16 @@ typedef enum {
   ALU_MVN
 } ArmALUOpcode;
 
-static int arm_undefined(Gba *gba, u32 instr) {
+static void arm_undefined(Gba *gba, u32 instr) {
 #ifdef DEBUG
   printf("%08X: undefined\n", instr);
 #endif
   (void)gba;
   (void)instr;
-  return 0;
 }
 
 // MUL, MLA
-int arm_mul(Gba *gba, u32 instr) {
+void arm_mul(Gba *gba, u32 instr) {
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
   u8 rd = GET_BITS(instr, 16, 4);
@@ -96,17 +96,23 @@ int arm_mul(Gba *gba, u32 instr) {
   }
 #endif
 
-  u8 m_cycles = 1;
-  u32 tmp = rs ^ ((s32)rs >> 31);
-  m_cycles += (tmp > 0xff);
-  m_cycles += (tmp > 0xffff);
-  m_cycles += (tmp > 0xffffff);
+  u32 rs_val = REG(rs);
 
-  u32 res = REG(rm) * REG(rs);
+  int m_cycles = 1;
+  u32 tmp = rs_val ^ ((s32)rs_val >> 31);
+  m_cycles += (tmp > 0xFF);
+  m_cycles += (tmp > 0xFFFF);
+  m_cycles += (tmp > 0xFFFFFF);
+
+  u32 res = REG(rm) * rs_val;
   if (acc) {
     res += REG(rn);
     m_cycles += 1;
   }
+
+  scheduler_step(&gba->scheduler, m_cycles);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
+
   REG(rd) = res;
 
   if (rd == 15) {
@@ -116,11 +122,10 @@ int arm_mul(Gba *gba, u32 instr) {
   if (s) {
     set_flags_nz(&gba->cpu, res);
   }
-
-  return m_cycles;
 }
+
 // MULL, MLAL
-int arm_mull(Gba *gba, u32 instr) {
+void arm_mull(Gba *gba, u32 instr) {
   bool sign = TEST_BIT(instr, 22);
   bool acc = TEST_BIT(instr, 21);
   bool s = TEST_BIT(instr, 20);
@@ -134,18 +139,30 @@ int arm_mull(Gba *gba, u32 instr) {
          acc ? "mlal" : "mull", s ? "s" : "", rdlo, rdhi, rm, rs);
 #endif
 
-  u8 m_cycles = 2;
-  u32 tmp = rs ^ ((s32)rs >> 31);
-  m_cycles += (tmp > 0xff);
-  m_cycles += (tmp > 0xffff);
-  m_cycles += (tmp > 0xffffff);
+  u32 rs_val = REG(rs);
+
+  int m_cycles = 2;
+  // u32 tmp = rs_val ^ ((s32)rs_val >> 31);
+  u32 tmp;
+  if (sign) {
+    tmp = rs_val ^ ((s32)rs_val >> 31);
+  } else {
+    tmp = rs_val;
+  }
+  m_cycles += (tmp > 0xFF);
+  m_cycles += (tmp > 0xFFFF);
+  m_cycles += (tmp > 0xFFFFFF);
 
   if (sign) {
     // SMULL, SMLAL
-    s64 res = (s64)(s32)REG(rm) * (s64)(s32)REG(rs);
+    s64 res = (s64)(s32)REG(rm) * (s64)(s32)rs_val;
     if (acc) {
       res += ((s64)REG(rdhi) << 32) + (s64)REG(rdlo);
+      m_cycles += 1;
     }
+
+    scheduler_step(&gba->scheduler, m_cycles);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
 
     REG(rdlo) = res & 0xFFFFFFFF;
     REG(rdhi) = res >> 32;
@@ -164,10 +181,14 @@ int arm_mull(Gba *gba, u32 instr) {
     }
   } else {
     // UMULL, UMLAL
-    u64 res = (u64)REG(rm) * (u64)REG(rs);
+    u64 res = (u64)REG(rm) * (u64)rs_val;
     if (acc) {
       res += ((u64)REG(rdhi) << 32) + (u64)REG(rdlo);
+      m_cycles += 1;
     }
+
+    scheduler_step(&gba->scheduler, m_cycles);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
 
     REG(rdlo) = res & 0xFFFFFFFF;
     REG(rdhi) = res >> 32;
@@ -185,11 +206,9 @@ int arm_mull(Gba *gba, u32 instr) {
       CPSR = (CPSR & ~(CPSR_N | CPSR_Z)) | flags;
     }
   }
-
-  return m_cycles;
 }
 
-int arm_swp(Gba *gba, u32 instr) {
+void arm_swp(Gba *gba, u32 instr) {
   bool b = TEST_BIT(instr, 22);
   u8 rn = GET_BITS(instr, 16, 4);
   u8 rd = GET_BITS(instr, 12, 4);
@@ -218,14 +237,14 @@ int arm_swp(Gba *gba, u32 instr) {
 
   REG(rd) = val;
 
+  scheduler_step(&gba->scheduler, 1);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   if (rd == 15) {
     arm_fetch(gba);
   }
-
-  return 1;
 }
 
-int arm_ldrh_strh(Gba *gba, u32 instr) {
+void arm_ldrh_strh(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -288,8 +307,6 @@ int arm_ldrh_strh(Gba *gba, u32 instr) {
 
   u32 addr = rn_val + (p ? offset : 0);
 
-  int cycles = 0;
-
   if (l) {
     // LDRH
     u16 val;
@@ -300,10 +317,12 @@ int arm_ldrh_strh(Gba *gba, u32 instr) {
     } else {
       REG(rd) = bus_read16(gba, addr, ACCESS_NONSEQ);
     }
+
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     if (rd == 15) {
       arm_fetch(gba);
     }
-    cycles = 1;
   } else {
     // STRH
     bus_write16(gba, addr, REG(rd), ACCESS_NONSEQ);
@@ -313,11 +332,9 @@ int arm_ldrh_strh(Gba *gba, u32 instr) {
   if (wb && (!l || rd != rn)) {
     REG(rn) += offset + ((rn == 15) << 3);
   }
-
-  return cycles;
 }
 
-int arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
+void arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool i = TEST_BIT(instr, 22);
@@ -404,6 +421,8 @@ int arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
   }
 
   REG(rd) = val;
+  scheduler_step(&gba->scheduler, 1);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   if (rd == 15) {
     arm_fetch(gba);
   }
@@ -411,11 +430,9 @@ int arm_ldrsb_ldrsh(Gba *gba, u32 instr) {
   if (wb && (rd != rn)) {
     REG(rn) += offset + ((rn == 15) << 3);
   }
-
-  return 1;
 }
 
-int arm_mrs(Gba *gba, u32 instr) {
+void arm_mrs(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 rd = GET_BITS(instr, 12, 4);
 
@@ -434,8 +451,6 @@ int arm_mrs(Gba *gba, u32 instr) {
   if (rd == 15) {
     REG(15) += 4;
   }
-
-  return 0;
 }
 
 static void arm_do_msr(Gba *gba, u32 val, bool r, u8 field_mask) {
@@ -469,7 +484,7 @@ static void arm_do_msr(Gba *gba, u32 val, bool r, u8 field_mask) {
   }
 }
 
-int arm_msr_reg(Gba *gba, u32 instr) {
+void arm_msr_reg(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
   u8 rm = GET_BITS(instr, 0, 4);
@@ -495,11 +510,9 @@ int arm_msr_reg(Gba *gba, u32 instr) {
 #endif
 
   arm_do_msr(gba, rm_val, r, field_mask);
-
-  return 0;
 }
 
-int arm_msr_imm(Gba *gba, u32 instr) {
+void arm_msr_imm(Gba *gba, u32 instr) {
   bool r = TEST_BIT(instr, 22);
   u8 field_mask = GET_BITS(instr, 16, 4);
   u8 rotate = GET_BITS(instr, 8, 4);
@@ -528,11 +541,9 @@ int arm_msr_imm(Gba *gba, u32 instr) {
 #endif
 
   arm_do_msr(gba, val, r, field_mask);
-
-  return 0;
 }
 
-int arm_bx(Gba *gba, u32 instr) {
+void arm_bx(Gba *gba, u32 instr) {
   u8 rn = GET_BITS(instr, 0, 4);
 
 #ifdef DEBUG
@@ -554,8 +565,6 @@ int arm_bx(Gba *gba, u32 instr) {
     PC = target;
     arm_fetch(gba);
   }
-
-  return 0;
 }
 
 static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
@@ -693,7 +702,7 @@ static void arm_do_dproc(Gba *gba, ArmALUOpcode opcode, u32 op1, u32 op2, u8 rd,
   }
 }
 
-int arm_data_proc_imm_shift(Gba *gba, u32 instr) {
+void arm_data_proc_imm_shift(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -735,10 +744,9 @@ int arm_data_proc_imm_shift(Gba *gba, u32 instr) {
       barrel_shifter(&gba->cpu, shift_type, rm_val, shift_amt, true);
 
   arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
-  return 0;
 }
 
-int arm_data_proc_reg_shift(Gba *gba, u32 instr) {
+void arm_data_proc_reg_shift(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -774,11 +782,12 @@ int arm_data_proc_reg_shift(Gba *gba, u32 instr) {
   ShiftRes sh_res =
       barrel_shifter(&gba->cpu, shift_type, rm_val, rs_val & 0xFF, false);
 
+  scheduler_step(&gba->scheduler, 1);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
-  return 1;
 }
 
-int arm_data_proc_imm(Gba *gba, u32 instr) {
+void arm_data_proc_imm(Gba *gba, u32 instr) {
   ArmALUOpcode op = (ArmALUOpcode)GET_BITS(instr, 21, 4);
   bool s = TEST_BIT(instr, 20);
   u8 rn = GET_BITS(instr, 16, 4);
@@ -806,10 +815,9 @@ int arm_data_proc_imm(Gba *gba, u32 instr) {
 #endif
 
   arm_do_dproc(gba, op, rn_val, sh_res.value, rd, s, sh_res.carry);
-  return 0;
 }
 
-static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
+static void arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
   bool p = TEST_BIT(instr, 24);
   bool b = TEST_BIT(instr, 22);
   bool w = TEST_BIT(instr, 21);
@@ -826,8 +834,6 @@ static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
 
   u32 addr = rn_val + (p ? offset : 0);
 
-  int cycles = 0;
-
   if (l) {
     // Load
     u32 val;
@@ -843,10 +849,11 @@ static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
       }
     }
     REG(rd) = val;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     if (rd == 15) {
       arm_fetch(gba);
     }
-    cycles = 1;
   } else {
     // Store
     u32 val = REG(rd);
@@ -864,11 +871,9 @@ static int arm_ldr_str_common(Gba *gba, u32 instr, u32 offset) {
   if (wb && (!l || rd != rn)) {
     REG(rn) += offset + ((rn == 15) << 3);
   }
-
-  return cycles;
 }
 
-int arm_ldr_str_imm(Gba *gba, u32 instr) {
+void arm_ldr_str_imm(Gba *gba, u32 instr) {
   bool u = TEST_BIT(instr, 23);
   u32 offset = GET_BITS(instr, 0, 12);
 
@@ -894,10 +899,10 @@ int arm_ldr_str_imm(Gba *gba, u32 instr) {
     offset = -offset;
   }
 
-  return arm_ldr_str_common(gba, instr, offset);
+  arm_ldr_str_common(gba, instr, offset);
 }
 
-int arm_ldr_str_reg(Gba *gba, u32 instr) {
+void arm_ldr_str_reg(Gba *gba, u32 instr) {
   bool u = TEST_BIT(instr, 23);
   u8 rm = GET_BITS(instr, 0, 4);
   Shift shift_type = (Shift)GET_BITS(instr, 5, 2);
@@ -940,10 +945,10 @@ int arm_ldr_str_reg(Gba *gba, u32 instr) {
     offset = -offset;
   }
 
-  return arm_ldr_str_common(gba, instr, offset);
+  arm_ldr_str_common(gba, instr, offset);
 }
 
-int arm_ldm_stm(Gba *gba, u32 instr) {
+void arm_ldm_stm(Gba *gba, u32 instr) {
   bool p = TEST_BIT(instr, 24);
   bool u = TEST_BIT(instr, 23);
   bool s = TEST_BIT(instr, 22);
@@ -1035,6 +1040,8 @@ int arm_ldm_stm(Gba *gba, u32 instr) {
   }
 
   if (l) {
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     if (transfer_pc) {
       if (s) {
         u32 spsr = SPSR;
@@ -1061,11 +1068,9 @@ int arm_ldm_stm(Gba *gba, u32 instr) {
   if (switch_to_user) {
     cpu_set_mode(&gba->cpu, mode);
   }
-
-  return l;
 }
 
-int arm_branch(Gba *gba, u32 instr) {
+void arm_branch(Gba *gba, u32 instr) {
   bool link = TEST_BIT(instr, 24);
   s32 offset = GET_BITS(instr, 0, 24);
 
@@ -1085,29 +1090,27 @@ int arm_branch(Gba *gba, u32 instr) {
   PC += offset - 4;
 
   arm_fetch(gba);
-
-  return 0;
 }
 
-int arm_stc_ldc(Gba *gba, u32 instr) {
+void arm_stc_ldc(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("STC/LDC");
   (void)gba;
   (void)instr;
 }
 
-int arm_cdp(Gba *gba, u32 instr) {
+void arm_cdp(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("CDP");
   (void)gba;
   (void)instr;
 }
 
-int arm_mcr_mrc(Gba *gba, u32 instr) {
+void arm_mcr_mrc(Gba *gba, u32 instr) {
   NOT_YET_IMPLEMENTED("MCR/MRC");
   (void)gba;
   (void)instr;
 }
 
-int arm_swi(Gba *gba, u32 instr) {
+void arm_swi(Gba *gba, u32 instr) {
 #ifdef DEBUG
   u32 comment = GET_BITS(instr, 0, 24);
   printf("%08X: swi #%d\n", instr, comment);
@@ -1120,7 +1123,6 @@ int arm_swi(Gba *gba, u32 instr) {
   LR = PC - 8;
   PC = 0x08;
   arm_fetch(gba);
-  return 0;
 }
 
 void arm_init_lut() {

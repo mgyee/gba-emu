@@ -7,7 +7,7 @@ void interrupt_init(InterruptManager *int_mgr) {
   int_mgr->ime = 0;
 }
 
-void inline raise_interrupt(Gba *gba, InterruptType type) {
+inline void raise_interrupt(Gba *gba, InterruptType type) {
   gba->int_mgr.if_ |= (1 << type);
 
   if (gba->int_mgr.ie & (1 << type)) {
@@ -15,7 +15,7 @@ void inline raise_interrupt(Gba *gba, InterruptType type) {
   }
 }
 
-bool inline interrupt_pending(Gba *gba) {
+inline bool interrupt_pending(Gba *gba) {
   InterruptManager *int_mgr = &gba->int_mgr;
   return (int_mgr->ime & 1) && (int_mgr->ie & int_mgr->if_);
 }

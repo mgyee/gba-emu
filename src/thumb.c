@@ -3,7 +3,7 @@
 #include "gba.h"
 #include <stdio.h>
 
-typedef int (*ThumbInstr)(Gba *gba, u16 instr);
+typedef void (*ThumbInstr)(Gba *gba, u16 instr);
 
 static ThumbInstr thumb_lut[1024];
 
@@ -49,16 +49,15 @@ typedef enum {
 } ThumbALUOpcode;
 
 // Handler Stubs
-static int thumb_unimplemented(Gba *gba, u16 instr) {
+static void thumb_unimplemented(Gba *gba, u16 instr) {
   (void)gba;
 #ifdef DEBUG
   printf("%04X: unimplemented\n", instr);
 #endif
   (void)instr;
-  return 0;
 }
 
-static int thumb_add_sub(Gba *gba, u16 instr) {
+static void thumb_add_sub(Gba *gba, u16 instr) {
   bool i = TEST_BIT(instr, 10);
   bool s = TEST_BIT(instr, 9);
   u8 rs = GET_BITS(instr, 3, 3);
@@ -103,9 +102,9 @@ static int thumb_add_sub(Gba *gba, u16 instr) {
   }
   REG(rd) = res;
   set_flags(&gba->cpu, res, carry, overflow);
-  return 0;
 }
-static int thumb_lsl_lsr_asr(Gba *gba, u16 instr) {
+
+static void thumb_lsl_lsr_asr(Gba *gba, u16 instr) {
   Shift shift = GET_BITS(instr, 11, 2);
   u8 offset = GET_BITS(instr, 6, 5);
   u8 rs = GET_BITS(instr, 3, 3);
@@ -119,9 +118,9 @@ static int thumb_lsl_lsr_asr(Gba *gba, u16 instr) {
   ShiftRes res = barrel_shifter(&gba->cpu, shift, REG(rs), offset, true);
   REG(rd) = res.value;
   set_flags_nzc(&gba->cpu, res.value, res.carry);
-  return 0;
 }
-static int thumb_mov_cmp_add_sub(Gba *gba, u16 instr) {
+
+static void thumb_mov_cmp_add_sub(Gba *gba, u16 instr) {
   u8 opcode = GET_BITS(instr, 11, 2);
   u8 rd = GET_BITS(instr, 8, 3);
   u8 imm = GET_BITS(instr, 0, 8);
@@ -172,9 +171,9 @@ static int thumb_mov_cmp_add_sub(Gba *gba, u16 instr) {
     }
     set_flags(&gba->cpu, res, carry, overflow);
   }
-  return 0;
 }
-static int thumb_data_proc(Gba *gba, u16 instr) {
+
+static void thumb_data_proc(Gba *gba, u16 instr) {
   ThumbALUOpcode opcode = (ThumbALUOpcode)GET_BITS(instr, 6, 4);
   u8 rs = GET_BITS(instr, 3, 3);
   u8 rd = GET_BITS(instr, 0, 3);
@@ -282,12 +281,13 @@ static int thumb_data_proc(Gba *gba, u16 instr) {
     set_flags_nz(cpu, res);
     break;
   case THUMB_MUL:
-    tmp = (u32)(rs ^ ((s32)rs >> 31));
-    cycles += (tmp > 0xff);
-    cycles += (tmp > 0xffff);
-    cycles += (tmp > 0xffffff);
+    tmp = (u32)(op1 ^ ((s32)op1 >> 31));
+    cycles += (tmp > 0xFF);
+    cycles += (tmp > 0xFFFF);
+    cycles += (tmp > 0xFFFFFF);
+    cycles += 1;
 
-    res = REG(rd) * REG(rs);
+    res = op1 * op2;
     REG(rd) = res;
     set_flags_nz(cpu, res);
     break;
@@ -302,10 +302,13 @@ static int thumb_data_proc(Gba *gba, u16 instr) {
     set_flags_nz(cpu, res);
     break;
   }
-  return cycles;
+  scheduler_step(&gba->scheduler, cycles);
+  if (cycles) {
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
+  }
 }
 
-static int thumb_bx(Gba *gba, u16 instr) {
+static void thumb_bx(Gba *gba, u16 instr) {
 #ifdef DEBUG
   u8 rn = GET_BITS(instr, 3, 4);
   printf("%04X: bx r%d\n", instr, rn);
@@ -326,10 +329,9 @@ static int thumb_bx(Gba *gba, u16 instr) {
     PC = target;
     arm_fetch(gba);
   }
-  return 0;
 }
 
-static int thumb_add_cmp_mov_hi(Gba *gba, u16 instr) {
+static void thumb_add_cmp_mov_hi(Gba *gba, u16 instr) {
   u8 opcode = GET_BITS(instr, 8, 2);
   u8 msbd = TEST_BIT(instr, 7) << 3;
   u8 msbs = TEST_BIT(instr, 6) << 3;
@@ -371,9 +373,9 @@ static int thumb_add_cmp_mov_hi(Gba *gba, u16 instr) {
       thumb_fetch(gba);
     }
   }
-  return 0;
 }
-static int thumb_ldr_pc_rel(Gba *gba, u16 instr) {
+
+static void thumb_ldr_pc_rel(Gba *gba, u16 instr) {
   u8 rd = GET_BITS(instr, 8, 3);
   u8 offset = GET_BITS(instr, 0, 8);
 
@@ -385,9 +387,11 @@ static int thumb_ldr_pc_rel(Gba *gba, u16 instr) {
   u32 val = bus_read32(gba, addr, ACCESS_NONSEQ);
   REG(rd) = val;
 
-  return 1;
+  scheduler_step(&gba->scheduler, 1);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
 }
-static int thumb_ldr_str_reg(Gba *gba, u16 instr) {
+
+static void thumb_ldr_str_reg(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   bool b = TEST_BIT(instr, 10);
   u8 ro = GET_BITS(instr, 6, 3);
@@ -413,7 +417,8 @@ static int thumb_ldr_str_reg(Gba *gba, u16 instr) {
       }
       REG(rd) = val;
     }
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     // Store
     if (b) {
@@ -422,11 +427,10 @@ static int thumb_ldr_str_reg(Gba *gba, u16 instr) {
       bus_write32(gba, addr, REG(rd), ACCESS_NONSEQ);
     }
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
 
-static int thumb_ldrh_strh_reg(Gba *gba, u16 instr) {
+static void thumb_ldrh_strh_reg(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 ro = GET_BITS(instr, 6, 3);
   u8 rb = GET_BITS(instr, 3, 3);
@@ -448,15 +452,16 @@ static int thumb_ldrh_strh_reg(Gba *gba, u16 instr) {
     } else {
       REG(rd) = bus_read16(gba, addr, ACCESS_NONSEQ);
     }
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     // STRH
     bus_write16(gba, addr, REG(rd), ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
-static int thumb_ldrsh_ldrsb_reg(Gba *gba, u16 instr) {
+
+static void thumb_ldrsh_ldrsb_reg(Gba *gba, u16 instr) {
   bool h = TEST_BIT(instr, 11); // 0=LDRSB, 1=LDRSH
   u8 ro = GET_BITS(instr, 6, 3);
   u8 rb = GET_BITS(instr, 3, 3);
@@ -492,14 +497,15 @@ static int thumb_ldrsh_ldrsb_reg(Gba *gba, u16 instr) {
   }
 
   REG(rd) = val;
-  return 1;
+  scheduler_step(&gba->scheduler, 1);
+  gba->cpu.next_fetch_access = ACCESS_NONSEQ;
 }
 
-static int thumb_ldrb_strb_reg(Gba *gba, u16 instr) {
-  return thumb_ldr_str_reg(gba, instr);
+static void thumb_ldrb_strb_reg(Gba *gba, u16 instr) {
+  thumb_ldr_str_reg(gba, instr);
 }
 
-static int thumb_ldr_str_imm(Gba *gba, u16 instr) {
+static void thumb_ldr_str_imm(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 imm = GET_BITS(instr, 6, 5);
   u8 rb = GET_BITS(instr, 3, 3);
@@ -520,15 +526,15 @@ static int thumb_ldr_str_imm(Gba *gba, u16 instr) {
       val = (val >> rot) | (val << (32 - rot));
     }
     REG(rd) = val;
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     bus_write32(gba, addr, REG(rd), ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
 
-static int thumb_ldrb_strb_imm(Gba *gba, u16 instr) {
+static void thumb_ldrb_strb_imm(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 imm = GET_BITS(instr, 6, 5);
   u8 rb = GET_BITS(instr, 3, 3);
@@ -544,15 +550,15 @@ static int thumb_ldrb_strb_imm(Gba *gba, u16 instr) {
 
   if (l) {
     REG(rd) = bus_read8(gba, addr, ACCESS_NONSEQ);
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     bus_write8(gba, addr, REG(rd) & 0xFF, ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
 
-static int thumb_ldrh_strh_imm(Gba *gba, u16 instr) {
+static void thumb_ldrh_strh_imm(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 imm = GET_BITS(instr, 6, 5);
   u8 rb = GET_BITS(instr, 3, 3);
@@ -575,15 +581,15 @@ static int thumb_ldrh_strh_imm(Gba *gba, u16 instr) {
     } else {
       REG(rd) = bus_read16(gba, addr, ACCESS_NONSEQ);
     }
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     bus_write16(gba, addr, REG(rd), ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
 
-static int thumb_ldr_str_sp_rel(Gba *gba, u16 instr) {
+static void thumb_ldr_str_sp_rel(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 rd = GET_BITS(instr, 8, 3);
   u8 imm = GET_BITS(instr, 0, 8);
@@ -602,14 +608,14 @@ static int thumb_ldr_str_sp_rel(Gba *gba, u16 instr) {
       val = (val >> rot) | (val << (32 - rot));
     }
     REG(rd) = val;
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     bus_write32(gba, addr, REG(rd), ACCESS_NONSEQ);
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
-static int thumb_add_sp_pc(Gba *gba, u16 instr) {
+static void thumb_add_sp_pc(Gba *gba, u16 instr) {
   bool sp = TEST_BIT(instr, 11); // 0=PC, 1=SP
   u8 rd = GET_BITS(instr, 8, 3);
   u8 imm = GET_BITS(instr, 0, 8);
@@ -624,10 +630,9 @@ static int thumb_add_sp_pc(Gba *gba, u16 instr) {
   } else {
     REG(rd) = ((PC - 2) & ~2) + val;
   }
-  return 0;
 }
 
-static int thumb_add_sub_sp(Gba *gba, u16 instr) {
+static void thumb_add_sub_sp(Gba *gba, u16 instr) {
   bool s = TEST_BIT(instr, 7);
   u8 imm = GET_BITS(instr, 0, 7);
   u32 val = imm << 2;
@@ -641,9 +646,9 @@ static int thumb_add_sub_sp(Gba *gba, u16 instr) {
   } else {
     SP += val;
   }
-  return 0;
 }
-static int thumb_push_pop(Gba *gba, u16 instr) {
+
+static void thumb_push_pop(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   bool r = TEST_BIT(instr, 8);
   u8 list = GET_BITS(instr, 0, 8);
@@ -670,15 +675,16 @@ static int thumb_push_pop(Gba *gba, u16 instr) {
   if (!list && !r) {
     if (l) {
       PC = bus_read32(gba, SP, ACCESS_NONSEQ);
+      scheduler_step(&gba->scheduler, 1);
+      gba->cpu.next_fetch_access = ACCESS_NONSEQ;
       thumb_fetch(gba);
       SP += 64;
-      return 1;
     } else {
       SP -= 64;
       bus_write32(gba, SP, PC, ACCESS_NONSEQ);
       gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     }
-    return 0;
+    return;
   }
 
   if (l) {
@@ -692,6 +698,8 @@ static int thumb_push_pop(Gba *gba, u16 instr) {
         sp += 4;
       }
     }
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
     if (r) {
       PC = bus_read32(gba, sp, ACCESS_SEQ);
       PC &= ~1;
@@ -699,7 +707,6 @@ static int thumb_push_pop(Gba *gba, u16 instr) {
       thumb_fetch(gba);
     }
     SP = sp;
-    return 1;
   } else {
     // PUSH
     u32 sp = SP;
@@ -727,10 +734,10 @@ static int thumb_push_pop(Gba *gba, u16 instr) {
       bus_write32(gba, addr, REG(14), ACCESS_SEQ);
     }
     gba->cpu.next_fetch_access = ACCESS_NONSEQ;
-    return 0;
   }
 }
-static int thumb_ldm_stm(Gba *gba, u16 instr) {
+
+static void thumb_ldm_stm(Gba *gba, u16 instr) {
   bool l = TEST_BIT(instr, 11);
   u8 rb = GET_BITS(instr, 8, 3);
   u8 list = GET_BITS(instr, 0, 8);
@@ -775,7 +782,8 @@ static int thumb_ldm_stm(Gba *gba, u16 instr) {
       REG(rb) = addr;
     }
 
-    return 1;
+    scheduler_step(&gba->scheduler, 1);
+    gba->cpu.next_fetch_access = ACCESS_NONSEQ;
   } else {
     int bytes = 0;
     u8 first = 0;
@@ -800,10 +808,10 @@ static int thumb_ldm_stm(Gba *gba, u16 instr) {
         addr += 4;
       }
     }
-    return 0;
   }
 }
-static int thumb_swi(Gba *gba, u16 instr) {
+
+static void thumb_swi(Gba *gba, u16 instr) {
 #ifdef DEBUG
   printf("%04X: swi\n", instr);
 #endif
@@ -815,10 +823,9 @@ static int thumb_swi(Gba *gba, u16 instr) {
   LR = PC - 4;
   PC = 0x08;
   arm_fetch(gba);
-  return 0;
 }
 
-static int thumb_undefined_bcc(Gba *gba, u16 instr) {
+static void thumb_undefined_bcc(Gba *gba, u16 instr) {
   (void)gba;
 #ifdef DEBUG
   printf("%04X: undefined bcc unimplemented\n", instr);
@@ -826,7 +833,8 @@ static int thumb_undefined_bcc(Gba *gba, u16 instr) {
   (void)instr;
   NOT_YET_IMPLEMENTED("THUMB UNDEFINED BCC");
 }
-static int thumb_bcc(Gba *gba, u16 instr) {
+
+static void thumb_bcc(Gba *gba, u16 instr) {
   u8 cond = GET_BITS(instr, 8, 4);
   u32 offset = GET_BITS(instr, 0, 8);
   if (offset & 0x80) {
@@ -899,9 +907,9 @@ static int thumb_bcc(Gba *gba, u16 instr) {
     PC += offset - 2;
     thumb_fetch(gba);
   }
-  return 0;
 }
-static int thumb_branch(Gba *gba, u16 instr) {
+
+static void thumb_branch(Gba *gba, u16 instr) {
   s32 offset = GET_BITS(instr, 0, 11);
   if (offset & 0x400) {
     offset |= 0xFFFFF800;
@@ -914,9 +922,9 @@ static int thumb_branch(Gba *gba, u16 instr) {
 
   PC += offset - 2;
   thumb_fetch(gba);
-  return 0;
 }
-static int thumb_bl_prefix(Gba *gba, u16 instr) {
+
+static void thumb_bl_prefix(Gba *gba, u16 instr) {
   u32 offset = GET_BITS(instr, 0, 11);
   if (offset & 0x400) {
     offset |= 0xFFFFF800;
@@ -925,10 +933,9 @@ static int thumb_bl_prefix(Gba *gba, u16 instr) {
   printf("%04X: bl prefix %d\n", instr, offset << 12);
 #endif
   LR = PC - 2 + (offset << 12);
-
-  return 0;
 }
-static int thumb_bl_suffix(Gba *gba, u16 instr) {
+
+static void thumb_bl_suffix(Gba *gba, u16 instr) {
   u32 offset = GET_BITS(instr, 0, 11);
 #ifdef DEBUG
   printf("%04X: bl suffix %d\n", instr, offset << 1);
@@ -937,10 +944,9 @@ static int thumb_bl_suffix(Gba *gba, u16 instr) {
   LR = (PC - 4) | 1;
   PC = lr & ~1;
   thumb_fetch(gba);
-  return 0;
 }
 
-int thumb_step(Gba *gba) {
+void thumb_step(Gba *gba) {
   u16 instr = thumb_fetch_next(gba);
 
   int index = thumb_decode(instr);

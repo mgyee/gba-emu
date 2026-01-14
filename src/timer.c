@@ -41,6 +41,7 @@ void timer_control_write(Gba *gba, int tmr, u16 val) {
                          (void *)(intptr_t)tmr);
 
   if (!was_enabled && control->enable) {
+    timer->start_time = gba->scheduler.current_time;
     timer->count = timer->reload_count;
 
     if (!control->cascade) {

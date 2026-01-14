@@ -119,17 +119,14 @@ void cpu_set_mode(Cpu *cpu, u32 new_mode) {
 }
 
 void cpu_step(Gba *gba) {
-  int cycles;
-
 #ifdef DEBUG
   printf("%08X: ", PC);
 #endif
   if (CPSR & CPSR_T) {
-    cycles = thumb_step(gba);
+    thumb_step(gba);
   } else {
-    cycles = arm_step(gba);
+    arm_step(gba);
   }
-  scheduler_step(&gba->scheduler, cycles);
 }
 
 bool check_cond(Cpu *cpu, u32 instr) {
