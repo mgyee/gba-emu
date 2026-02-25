@@ -17,6 +17,10 @@ void timer_control_write(Gba *gba, int tmr, u16 val) {
 
   bool was_enabled = control->enable;
 
+  if (was_enabled) {
+    timer->count = timer_get_count(gba, tmr);
+  }
+
   control->val = val;
   int freq = GET_BITS(val, 0, 2);
   switch (freq) {
@@ -41,13 +45,13 @@ void timer_control_write(Gba *gba, int tmr, u16 val) {
                          (void *)(intptr_t)tmr);
 
   if (!was_enabled && control->enable) {
-    timer->start_time = gba->scheduler.current_time;
+    timer->start_time = gba->scheduler.current_time + 2;
     timer->count = timer->reload_count;
 
     if (!control->cascade) {
       int time_to_overflow = (OVERFLOW - timer->count) * control->freq;
       scheduler_push_event_ctx(&gba->scheduler, EVENT_TYPE_TIMER_OVERFLOW,
-                               time_to_overflow, (void *)(intptr_t)tmr);
+                               time_to_overflow + 2, (void *)(intptr_t)tmr);
     }
   }
 }
@@ -106,41 +110,3 @@ void timer_overflow(Gba *gba, int tmr, uint lateness) {
     }
   }
 }
-
-// void timer_step(Gba *gba, int cycles) {
-//   TimerManager *tmr_mgr = &gba->tmr_mgr;
-//
-//   int previous_overflows = 0;
-//   for (int i = 0; i < 4; i++) {
-//     Timer *timer = &tmr_mgr->timers[i];
-//     TimerControl *control = &timer->control;
-//
-//     if (control->enable) {
-//       int increment;
-//       if (control->cascade) {
-//         increment = previous_overflows;
-//       } else {
-//         timer->cycle_count += cycles;
-//         increment = timer->cycle_count / control->freq;
-//         timer->cycle_count %= control->freq;
-//       }
-//
-//       int period = OVERFLOW - timer->reload_count;
-//       int to_overflow = OVERFLOW - timer->count;
-//
-//       if (increment >= to_overflow) {
-//         previous_overflows = 1 + (increment - to_overflow) / period;
-//         timer->count = timer->reload_count + (increment - to_overflow) %
-//         period; if (control->irq) {
-//           raise_interrupt(gba, INT_TIMER0 + i);
-//         }
-//       } else {
-//         timer->count += increment;
-//         previous_overflows = 0;
-//       }
-//     } else {
-//       // Timer disabled
-//       previous_overflows = 0;
-//     }
-//   }
-// }
