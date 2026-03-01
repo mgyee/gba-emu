@@ -5,7 +5,8 @@ typedef enum {
   BACKUP_NONE,
   BACKUP_SRAM,
   BACKUP_EEPROM,
-  BACKUP_FLASH
+  BACKUP_FLASH64,
+  BACKUP_FLASH128
 } BackupType;
 
 typedef struct {
@@ -14,7 +15,7 @@ typedef struct {
   u32 size;
 } Backup;
 
-void backup_init(Backup *backup, BackupType type);
+void backup_init(Backup *backup, u8 *rom_data, u32 rom_size);
 u8 backup_read8(Backup *backup, u32 address);
 u16 backup_read16(Backup *backup, u32 address);
 u32 backup_read32(Backup *backup, u32 address);

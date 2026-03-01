@@ -218,8 +218,7 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    res = backup_read8(&gba->backup, offset);
+    res = backup_read8(&gba->backup, address);
     break;
   default: {
     u32 openbus = get_openbus_value(gba, address);
@@ -291,8 +290,7 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    res = backup_read16(&gba->backup, offset);
+    res = backup_read16(&gba->backup, address);
     break;
   default: {
     u32 openbus = get_openbus_value(gba, address);
@@ -365,8 +363,7 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    res = backup_read32(&gba->backup, offset);
+    res = backup_read32(&gba->backup, address);
     break;
   default:
     res = get_openbus_value(gba, address);
@@ -414,8 +411,7 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    backup_write8(&gba->backup, offset, data);
+    backup_write8(&gba->backup, address, data);
     break;
   default:
     break;
@@ -460,8 +456,7 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    backup_write16(&gba->backup, offset, data);
+    backup_write16(&gba->backup, address, data);
     break;
   default:
     break;
@@ -506,8 +501,7 @@ void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
     break;
   case REGION_SRAM:
   case REGION_UNUSED:
-    offset = address & 0x7FFF;
-    backup_write32(&gba->backup, offset, data);
+    backup_write32(&gba->backup, address, data);
     break;
   default:
     break;
