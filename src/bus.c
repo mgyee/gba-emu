@@ -1,31 +1,10 @@
 #include "bus.h"
+#include "backup.h"
 #include "cpu.h"
 #include "gba.h"
 #include "io.h"
 #include <stdio.h>
 #include <string.h>
-
-static inline u8 read_mem8(const u8 *data, u32 offset) { return data[offset]; }
-
-static inline u16 read_mem16(const u8 *data, u32 offset) {
-  return *(u16 *)(data + offset);
-}
-
-static inline u32 read_mem32(const u8 *data, u32 offset) {
-  return *(u32 *)(data + offset);
-}
-
-static inline void write_mem8(u8 *data, u32 offset, u8 value) {
-  data[offset] = value;
-}
-
-static inline void write_mem16(u8 *data, u32 offset, u16 value) {
-  *(u16 *)(data + offset) = value;
-}
-
-static inline void write_mem32(u8 *data, u32 offset, u32 value) {
-  *(u32 *)(data + offset) = value;
-}
 
 void bus_init_waitstates(Bus *bus) {
   for (int access = 0; access < 2; access++) {
@@ -238,12 +217,9 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
     }
     break;
   case REGION_SRAM:
-    offset = address & 0xFFFF;
-    if (offset < 0x10000) {
-      res = 0xFF;
-    } else {
-      res = 0xFF;
-    }
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    res = backup_read8(&gba->backup, offset);
     break;
   default: {
     u32 openbus = get_openbus_value(gba, address);
@@ -258,8 +234,10 @@ u8 bus_read8(Gba *gba, u32 address, Access access) {
 u16 bus_read16(Gba *gba, u32 address, Access access) {
   u16 res;
   u32 offset;
-  address &= ~1;
   int region = get_region(address);
+  if (region < REGION_SRAM) {
+    address &= ~1;
+  }
   switch (region) {
   case REGION_BIOS:
     if (address < BIOS_SIZE) {
@@ -312,8 +290,9 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
     }
     break;
   case REGION_SRAM:
-    offset = address & 0xFFFF;
-    res = 0xFFFF;
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    res = backup_read16(&gba->backup, offset);
     break;
   default: {
     u32 openbus = get_openbus_value(gba, address);
@@ -328,8 +307,10 @@ u16 bus_read16(Gba *gba, u32 address, Access access) {
 u32 bus_read32(Gba *gba, u32 address, Access access) {
   u32 res;
   u32 offset;
-  address &= ~3;
   int region = get_region(address);
+  if (region < REGION_SRAM) {
+    address &= ~3;
+  }
   switch (region) {
   case REGION_BIOS:
     if (address < BIOS_SIZE) {
@@ -383,8 +364,9 @@ u32 bus_read32(Gba *gba, u32 address, Access access) {
     }
     break;
   case REGION_SRAM:
-    offset = address & 0xFFFF;
-    res = 0xFFFFFFFF;
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    res = backup_read32(&gba->backup, offset);
     break;
   default:
     res = get_openbus_value(gba, address);
@@ -430,6 +412,11 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
   case REGION_OAM:
     return;
     break;
+  case REGION_SRAM:
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    backup_write8(&gba->backup, offset, data);
+    break;
   default:
     break;
   }
@@ -438,8 +425,10 @@ void bus_write8(Gba *gba, u32 address, u8 data, Access access) {
 
 void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
   u32 offset;
-  address &= ~1;
   int region = get_region(address);
+  if (region < REGION_SRAM) {
+    address &= ~1;
+  }
   switch (region) {
   case REGION_BIOS:
     break;
@@ -469,6 +458,11 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
     offset = address & 0x3FF;
     write_mem16(gba->ppu.oam, offset, data);
     break;
+  case REGION_SRAM:
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    backup_write16(&gba->backup, offset, data);
+    break;
   default:
     break;
   }
@@ -477,8 +471,10 @@ void bus_write16(Gba *gba, u32 address, u16 data, Access access) {
 
 void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   u32 offset;
-  address &= ~3;
   int region = get_region(address);
+  if (region < REGION_SRAM) {
+    address &= ~3;
+  }
   switch (region) {
   case REGION_BIOS:
     break;
@@ -507,6 +503,11 @@ void bus_write32(Gba *gba, u32 address, u32 data, Access access) {
   case REGION_OAM:
     offset = address & 0x3FF;
     write_mem32(gba->ppu.oam, offset, data);
+    break;
+  case REGION_SRAM:
+  case REGION_UNUSED:
+    offset = address & 0x7FFF;
+    backup_write32(&gba->backup, offset, data);
     break;
   default:
     break;

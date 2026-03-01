@@ -45,19 +45,33 @@ void dma_transfer(Gba *gba, int ch) {
   int src_region = get_region(src);
   int dst_region = get_region(dst);
 
-  if (src_region != REGION_SRAM) {
-    if (ch == 0) {
-      src &= 0x07FFFFFF;
+  // if (src_region < REGION_SRAM) {
+  if (ch == 0) {
+    src &= 0x07FFFFFF;
+  } else {
+    src &= 0x0FFFFFFF;
+  }
+  // } else {
+  if (src_region >= REGION_SRAM) {
+    if (control->chunk_size == 4) {
+      src &= ~3;
     } else {
-      src &= 0x0FFFFFFF;
+      src &= ~1;
     }
   }
 
-  if (dst_region != REGION_SRAM) {
-    if (ch < 3) {
-      dst &= 0x07FFFFFF;
+  // if (dst_region < REGION_SRAM) {
+  if (ch < 3) {
+    dst &= 0x07FFFFFF;
+  } else {
+    dst &= 0x0FFFFFFF;
+  }
+  // } else {
+  if (dst_region >= REGION_SRAM) {
+    if (control->chunk_size == 4) {
+      dst &= ~3;
     } else {
-      dst &= 0x0FFFFFFF;
+      dst &= ~1;
     }
   }
 

@@ -41,3 +41,25 @@ void bus_write32(Gba *gba, u32 address, u32 value, Access access);
 
 void bus_init_waitstates(Bus *bus);
 void bus_update_waitstates(Bus *bus, u16 waitcnt);
+
+static inline u8 read_mem8(const u8 *data, u32 offset) { return data[offset]; }
+
+static inline u16 read_mem16(const u8 *data, u32 offset) {
+  return *(u16 *)(data + offset);
+}
+
+static inline u32 read_mem32(const u8 *data, u32 offset) {
+  return *(u32 *)(data + offset);
+}
+
+static inline void write_mem8(u8 *data, u32 offset, u8 value) {
+  data[offset] = value;
+}
+
+static inline void write_mem16(u8 *data, u32 offset, u16 value) {
+  *(u16 *)(data + offset) = value;
+}
+
+static inline void write_mem32(u8 *data, u32 offset, u32 value) {
+  *(u32 *)(data + offset) = value;
+}

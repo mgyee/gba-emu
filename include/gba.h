@@ -1,5 +1,6 @@
 #pragma once
 #include "apu.h"
+#include "backup.h"
 #include "bus.h"
 #include "common.h"
 #include "cpu.h"
@@ -39,6 +40,8 @@ struct Gba {
   //
   u8 ewram[0x40000];
   u8 iwram[0x8000];
+
+  Backup backup;
 
   Keypad keypad;
 };

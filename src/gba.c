@@ -1,4 +1,5 @@
 #include "gba.h"
+#include "backup.h"
 #include <string.h>
 
 bool gba_init(Gba *gba, const char *bios_path, const char *rom_path) {
@@ -23,6 +24,7 @@ bool gba_init(Gba *gba, const char *bios_path, const char *rom_path) {
   timer_init(&gba->tmr_mgr);
   interrupt_init(&gba->int_mgr);
   scheduler_init(&gba->scheduler);
+  backup_init(&gba->backup, BACKUP_SRAM);
 
   arm_fetch(gba);
   scheduler_push_event(&gba->scheduler, EVENT_TYPE_HBLANK_START,
@@ -35,6 +37,7 @@ void gba_free(Gba *gba) {
   free(gba->rom.title);
   free(gba->rom.code);
   free(gba->rom.maker);
+  free(gba->backup.data);
 }
 
 bool load_bios(u8 *bios, const char *bios_path) {
